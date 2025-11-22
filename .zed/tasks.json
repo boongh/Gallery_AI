@@ -1,0 +1,59 @@
+[
+  //Dev env
+  //
+  //
+  {
+    "label": "Run Next App",
+    "command": "cmd.exe",
+    "args": [
+      "/C",
+      "pnpm", // The entire command is a single string argument
+      "dev"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT/next",
+    "reveal": "always",
+    "hide": "never",
+    "tags": ["Dev"]
+  },
+  {
+    "label": "Run Embed API Service",
+    "cwd": "$ZED_WORKTREE_ROOT/EmbedAPI",
+    "command": "..\\venv\\scripts\\python",
+    "args": ["-m", "uvicorn", "main:app", "--reload"],
+    "reveal": "always",
+    "hide": "never",
+    "tags": ["Dev"]
+  },
+
+  // Building Docker Image
+  //
+  //
+  //
+  {
+    "label": "Build Next Image",
+    "cwd": "$ZED_WORKTREE_ROOT/next",
+    "command": "docker",
+    "args": ["build", ".", "-t", "gallery--next-app"],
+    "reveal": "always",
+    "hide": "never",
+    "tags": ["Image", "Build"]
+  },
+  {
+    "label": "Build EmbedAPI Image",
+    "cwd": "$ZED_WORKTREE_ROOT/EmbedAPI",
+    "command": "docker",
+    "args": ["build", ".", "-t", "gallery--embed-api"],
+    "reveal": "always",
+    "hide": "never",
+    "tags": ["Image", "Build"]
+  },
+  {
+    "label": "Build Worker Image",
+    "cwd": "$ZED_WORKTREE_ROOT/Worker",
+    "command": "docker",
+    "args": ["build", ".", "-t", "gallery--worker"],
+    "reveal": "always",
+    "hide": "never",
+    "tags": ["Image", "Build"]
+  }
+]

@@ -1,0 +1,127 @@
+@startuml
+
+top to bottom direction
+
+/'
+skinparam linetype ortho
+skinparam nodesep 100
+skinparam ranksep 100
+skinparam maxmessagesize 180
+'/
+
+json Image_Index_Structure {
+"UUID": "0SB85BA6AWFKK",
+"Format": "image/jpg",
+"Status": "Pending",
+"Full Ver. File Path": "./Public/Uploads/Originals/0SB85BA6AWFKK.jpg",
+"Thumbnail File Path": "./Public/Uploads/Thumbnails/0SB85BA6AWFKK.jpg",
+"metadata": "{Exif data object as string}"
+}
+
+json Image_Hash_Structure {
+"Hash": 1590896250684821214,
+"UUID": "0SB85BA6AWFKK",
+"Hash Version": 1,
+"Embed versions": 1,
+"Embedding": "[0.3232, 0.484, 033333 .... ] "
+}
+
+json Text_Hash_Structure {
+"Hash": 1590896250684821214,
+"Text": "White flower on field",
+"Hash Version": 1,
+"Reindex": false,
+"Embed versions": 1,
+"Embedding": "[0.3232, 0.484, 033333 .... ] ",
+"Access Freq": 1,
+"Last Access": 1222211100
+}
+
+json "System Metric Structure" as System_Metric_Structure {
+"Embeddings Generated": 3554,
+"Median Embedding Latency (Milliseconds)": 5040,
+"Current Queue Depth" : 201,
+"Collection Size (Bytes)": 15005545121
+}
+
+database "Metadata DB"{
+    [Image Index] --> Image_Index_Structure
+}
+
+database "Dedupe DB"{
+    [Image Hash] --> Image_Hash_Structure
+    [Text Hash] --> Text_Hash_Structure
+}
+
+database "System Metric DB" {
+    [System Metric] --> [System_Metric_Structure]
+}
+
+database Qdrant{
+    [Vector Image Index]
+}
+
+component RabbitMQ {
+    [Exchange] --> [Embed queue]
+
+}
+
+component EmbedWorker{
+    [Embed queue] --> [Read files]
+    [Read files] --> [Embed image]
+    [Embed image] --> [Image Index]
+    [Embed image] --> [Vector Image Index]
+}
+
+component EmbedAPI{
+    port text as textembedapi
+    port image as imageembedapi
+
+
+    textembedapi <-> [Embed text]
+}
+
+component Next{
+    [Frontend]
+
+    component express {
+
+        [/api/admin/status/ws]
+        [Frontend] <-> [/api/admin/status/ws] : WebSocket?
+        [/api/admin/status/ws] --> [System Metric]
+
+        [/api/upload]
+        [/api/upload] <-> [Image Hash Check] : Check for exact repeat
+        [Image Hash Check] --> [Image Hash]
+
+        [/api/upload] --> [?allowdupe=true] : No repeat filters
+
+        [Image Hash Check] --> [Generate UUID] : Non repeated image
+        [?allowdupe=true] --> [Generate UUID] : All images
+
+        [Generate thumbnail \nSave image + thumbnail \nto disk] as Saveimgdisk
+
+        [Generate UUID] --> Saveimgdisk
+        Saveimgdisk --> [Image Index]
+        Saveimgdisk --> [Image Hash]
+        Saveimgdisk --> [Exchange]
+        Saveimgdisk --> [System Metric]
+
+        [/api/textsem=text]
+        [/api/textsem=text] --> [Text Hash] : Fetch past queries
+        [/api/textsem=text] --> textembedapi : Novel query
+
+
+    }
+
+
+    [Frontend] --> [/api/upload] : Form data image
+    [Frontend] <-- [/api/upload] : Repeated img warning
+
+    [Frontend] --> [/api/textsem=text] : Text semantic search
+}
+
+
+
+
+@enduml

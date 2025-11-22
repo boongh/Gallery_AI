@@ -1,0 +1,8 @@
+python-multipart
+pika
+uvicorn[standard]
+torch
+accelerate
+torchvision
+pillow
+transformers

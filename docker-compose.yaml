@@ -1,0 +1,30 @@
+services:
+  next-app:
+    image: gallery--next-app
+    build: ./next
+
+    environment:
+      EMBEDAPIURL: http://embedapi
+      QDRANTDB: http://qdrantdb
+
+    depends_on:
+      - worker
+      - messagequeue
+      - embedapi
+
+    ports:
+      - 3000:3000
+
+  worker:
+    image: gallery--worker
+    build: ./Worker
+
+  messagequeue:
+    image: rabbitmq
+
+  embedapi:
+    image: gallery--embed-api
+    build: ./EmbedAPI
+
+  qdrantdb:
+    image: qdrant/qdrant
