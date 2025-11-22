@@ -1,0 +1,6 @@
+node_modules
+dockerfile
+.dockerignore
+.gitignore
+.next
+.env
