@@ -4,8 +4,10 @@ services:
     build: ./next
 
     environment:
-      EMBEDAPIURL: http://embedapi
-      QDRANTDB: http://qdrantdb
+      POSTGRES_URL: postgres
+      EMBEDAPIURL: embedapi
+      QDRANTDB: qdrantdb
+
 
     depends_on:
       - worker
@@ -15,12 +17,21 @@ services:
     ports:
       - 3000:3000
 
+    volumes:
+      - ./data:/data
+
   worker:
     image: gallery--worker
     build: ./Worker
 
+    environment:
+      - RABBITMQ_HOST=messagequeue
+
   messagequeue:
-    image: rabbitmq
+    image: rabbitmq:management-alpine
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
 
   embedapi:
     image: gallery--embed-api
@@ -28,3 +39,24 @@ services:
 
   qdrantdb:
     image: qdrant/qdrant
+
+  postgres:
+    image: postgres:alpine
+
+    environment:
+      POSTGRES_USER: gallery
+      POSTGRES_PASSWORD: gallery
+      POSTGRES_DB: gallerydb
+
+    ports:
+      - 5432:5432
+
+    volumes:
+      - ./data/postgres/data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pgdata:
+    driver: local
+  qdrant_storage:
+    driver: local

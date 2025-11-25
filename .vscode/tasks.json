@@ -1,0 +1,104 @@
+{
+  // See https://go.microsoft.com/fwlink/?LinkId=733558
+  // for the documentation about the tasks.json format
+  "version": "2.0.0",
+  "tasks": [
+    //Development server tasks
+    {
+      "label": "Run NextJS Server",
+      "type": "shell",
+      "command": "pnpm dev",
+      "options": {
+        "cwd": "${workspaceFolder}/next"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Run Postgres Server",
+      "type": "shell",
+      "command": "docker compose up -d postgres",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Run Messaging Server",
+      "type": "shell",
+      "command": "docker compose up -d messagequeue",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+
+
+
+    //Docker build tasks
+    {
+      "label": "Build NextJS Docker Image",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "build",
+        ".",
+        "-t",
+        "gallery--next-app"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/next"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Build Worker Docker Image",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "build",
+        ".",
+        "-t",
+        "gallery--worker"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/Worker"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+  ]
+}

@@ -1,0 +1,54 @@
+CREATE SCHEMA galleryindex AUTHORIZATION gallery;
+CREATE SCHEMA cache AUTHORIZATION gallery;
+CREATE SCHEMA collections AUTHORIZATION gallery;
+CREATE SCHEMA system AUTHORIZATION gallery;
+
+CREATE TABLE galleryindex.images (
+    uuid UUID PRIMARY KEY,
+    format TEXT NOT NULL,
+    filepath TEXT NOT NULL,
+    thumbnail_filepath TEXT,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT now(),
+    uploaded_at TIMESTAMP DEFAULT now(),
+    metadata JSONB
+);
+
+CREATE TABLE cache.textsqueries (
+    query TEXT PRIMARY KEY,
+    embedding_version TEXT NOT NULL,
+    embedding JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT now(),
+    last_accessed TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE cache.imagesqueries (
+    bytehash BIGINT PRIMARY KEY,
+    uuid UUID REFERENCES galleryindex.images(uuid) ON DELETE CASCADE,
+    hash_version TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT now(),
+    last_accessed TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE collections.collection_data (
+    uuid UUID PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT now(),
+    name TEXT NOT NULL,
+    description TEXT,
+    metadata JSONB
+);
+
+CREATE TABLE collections.collection_images (
+    collection_uuid UUID REFERENCES collections.collection_data(uuid) ON DELETE CASCADE,
+    image_uuid UUID REFERENCES galleryindex.images(uuid) ON DELETE CASCADE,
+    added_at TIMESTAMP DEFAULT now(),
+    PRIMARY KEY (collection_uuid, image_uuid)
+);
+
+CREATE TABLE system.metrics(
+  embeddings_generated BIGINT DEFAULT 0,
+  queries_served BIGINT DEFAULT 0,
+  images_stored BIGINT DEFAULT 0,
+  median_latency_ms DOUBLE PRECISION DEFAULT 0,
+  memory_usage_mb DOUBLE PRECISION DEFAULT 0
+);

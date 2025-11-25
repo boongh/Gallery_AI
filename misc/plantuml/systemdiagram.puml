@@ -1,0 +1,222 @@
+@startuml
+
+top to bottom direction
+
+skinparam nodesep 100
+skinparam linewidth 5
+/'
+skinparam linetype ortho
+skinparam ranksep 100
+skinparam maxmessagesize 180
+'/
+
+package DataSchema{
+
+
+    json Image_Index_Structure {
+    "UUID": "0SB85BA6AWFKK",
+    "Date of Creation": 1425412641255,
+    "Format": "image/jpg",
+    "Status": "Pending",
+    "Full Ver. File Path": "./Public/Uploads/Originals/0SB85BA6AWFKK.jpg",
+    "Thumbnail File Path": "./Public/Uploads/Thumbnails/0SB85BA6AWFKK.jpg",
+    "metadata": "{Exif data object as string}"
+    }   
+    
+    json Image_Hash_Structure {
+    "Hash": 1590896250684821214,
+    "UUID": "0SB85BA6AWFKK",
+    "Hash Version": 1,
+    "Embed versions": 1,
+    "Embedding": "[0.3232, 0.484, 033333 .... ] "
+    }
+    
+    json Past_Text_Query {
+    "Text": "White flower on field",
+    "Embedding": "[0.3232, 0.484, 033333 .... ] ",
+    "Embed versions": 1,
+    "Access Freq": 1,
+    "First Searched": 122200000,
+    "Last Access": 1222211100
+    }
+    
+    json "System Metric Structure" as System_Metric_Structure {
+    "Embeddings Generated": 3554,
+    "Median Embedding Latency (Milliseconds)": 5040,
+    "Current Queue Depth" : 201,
+    "Collection Size (Bytes)": 15005545121
+    }
+    
+    json "Vector Image Index" as VImgIndex{
+    "UUID":"0SB85BA6AWFKK",
+    "Vector":"[0.5652, 0,256565, ...]",
+    "Embedding Version": 1
+    }
+    
+    json "Image Collections Association" as imgcol{
+    "Collection ID":"1SB85BA6AWFCC",
+    "UUID":"0SB85BA6AWFKK",
+    "Added on":122220000
+    }
+    
+    json "Image Collections" as imgcoldata{
+    "Collection ID":"1SB85BA6AWFCC",
+    "Collection Name": "Beach Pataya 2025",
+    "Date Created": 12220000,
+    "Last Updated": 12230000,
+    "Item numbers":23
+    }
+    
+    json "Face Embeddings" as faceembedsseen{
+    "EntryID":12335348795498,
+    "Vector":"[...]",
+    "Image UUID": "0SB85BA6AWFKK"
+    }
+    
+    json "Face Entry" as faceentry{
+    "Face UUID": "2SB85BA6AWFFF",
+    "First Embed": "[...]" ,
+    "Name": "Unnamed"
+    }
+}
+
+package databases{
+
+    database "Postgresql" {
+    '"Image Index \nSqlite"{
+        [Image Index] ..> Image_Index_Structure
+    
+    
+    '"Dedupe and Cache DB \nSqlite"
+        [Image Hash] ..> Image_Hash_Structure
+        [Text Hash] ..> Past_Text_Query
+    
+    
+    '"Image Collection \nSqlite"
+        [Image Collection Names] ..> imgcoldata
+        [Image In Collection]  ..> imgcol
+    
+    'System Metrics
+        [System Metric] ..> [System_Metric_Structure]
+    
+    }
+    database "Vector DB \nQDrant"{
+        [Vector Image Index] ..> VImgIndex
+        [Face Instance Embedding] ..> faceembedsseen
+        [Identity Entry] ..> faceentry
+    }
+
+}
+
+package backends{
+
+    component RabbitMQ {
+        [Exchange] --> [Embed queue]
+    
+    }
+    
+    component "Workers" as EmbedWorker{
+        [Embed queue] --> [Read files]
+        
+        'Gen thumbnail and save
+        [Read files] --> [Generate thumbnail \n& save to disk] 
+        [Generate thumbnail \n& save to disk] --> [Image Index] : : Check if thumbnail \nalready exist
+        
+        'Semantic Search worker
+        [Read files] --> [Embed image]
+        [Embed image] --> [Image Index]
+        [Embed image] --> [Vector Image Index]
+        
+        'Face search worker
+        [Read files] --> [Face Detection]
+        [Face Detection] --> [Get all face embeddings]
+        [Get all face embeddings] --> [Face Instance Embedding] : Writes new face embeddings found
+        
+        [Get all face embeddings] --> [For each face]
+        [For each face] --> [Identity Entry] : Look up closest match to the face
+        [For each face] --> [Upsert new face] : If a look up can't \nfind a close enough match, \nupsert new
+        [Upsert new face] --> [Identity Entry]
+        
+        
+    }
+    
+    component EmbedAPI{
+        port text as textembedapi
+        port image as imageembedapi
+    
+    
+        textembedapi <-> [Embed text]
+    }
+    
+    component "Redis Pub Sub" {
+        [System Metric (Realtime)]
+    }
+}
+
+component Next{
+    [Frontend]
+
+    component express {
+
+        [/api/admin/status/ws]
+        [Frontend] <-> [/api/admin/status/ws] : WebSocket?
+        [/api/admin/status/ws] <-> [System Metric (Realtime)] : Handles real time \nupdate to state
+        [/api/admin/status/ws] <-> [System Metric] : Handles persistent \nupdate to disk
+
+
+        package uploadpipeline{
+        
+            [/api/upload]
+            [/api/upload] <-> [Image Hash Check] : Check for exact repeat
+            [Image Hash Check] --> [Image Hash]
+    
+            [/api/upload] --> [?allowdupe=true] : No repeat filters
+    
+            [Image Hash Check] --> [Generate UUID] : Non repeated image
+            [?allowdupe=true] --> [Generate UUID] : All images
+    
+            [Save image to disk] as Saveimgdisk
+    
+            [Generate UUID] --> Saveimgdisk
+            Saveimgdisk --> [Image Index]
+            Saveimgdisk --> [Image Hash]
+            Saveimgdisk --> [Exchange]
+            Saveimgdisk --> [System Metric (Realtime)]
+        
+        }
+        
+        package textsemsearchpipeline{
+
+            [/api/textsem=text?offset=0] as [/api/textsem=text]
+            [/api/textsem=text] --> (Check Text Hash)
+            (Check Text Hash) --> [Text Hash] : Fetch past queries
+            (Check Text Hash) --> [Get new text embed] : Novel Query
+            [Get new text embed] <-> textembedapi
+            [Get new text embed] <-- [Vector Image Index] : New Embedding Query
+            [Get new text embed] --> [Get Thumbnails]
+            [Get Thumbnails] --> [Image Index]
+            [Get Thumbnails] --> [/api/textsem=text]
+        
+        }
+
+
+        package colquerypipeline{
+            [/api/collection/name]
+            [Frontend] <-> [/api/collection/name] : Search by collection
+            [/api/collection/name] --> [Get all images in a collection]
+            [Get all images in a collection] --> [Image In Collection]
+            [Get all images in a collection] --> [Get Collection Name]
+            [Get Collection Name] --> [Image Collection Names]
+            [/api/collection/name] --> [System Metric (Realtime)]
+        }
+    }
+
+
+    [Frontend] --> [/api/upload] : Form data image
+    [Frontend] <-- [/api/upload] : Repeated img warning
+
+    [Frontend] <-> [/api/textsem=text] : Text semantic search
+}
+
+
+@enduml

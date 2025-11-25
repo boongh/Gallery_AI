@@ -7,8 +7,7 @@
     "command": "cmd.exe",
     "args": [
       "/C",
-      "pnpm", // The entire command is a single string argument
-      "dev"
+      "pnpm dev" // The entire command is a single string argument
     ],
     "cwd": "$ZED_WORKTREE_ROOT/next",
     "reveal": "always",
@@ -28,12 +27,14 @@
   // Building Docker Image
   //
   //
-  //
   {
     "label": "Build Next Image",
     "cwd": "$ZED_WORKTREE_ROOT/next",
-    "command": "docker",
-    "args": ["build", ".", "-t", "gallery--next-app"],
+    "command": "cmd.exe",
+    "args": [
+      "/C",
+      "docker build . -t gallery--next-app" // The entire command is a single string argument
+    ],
     "reveal": "always",
     "hide": "never",
     "tags": ["Image", "Build"]
