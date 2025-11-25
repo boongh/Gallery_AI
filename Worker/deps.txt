@@ -6,3 +6,4 @@ accelerate
 torchvision
 pillow
 transformers
+psycopg[binary,pool]

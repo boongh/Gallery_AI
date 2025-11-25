@@ -52,6 +52,25 @@
         "panel": "new"
       }
     },
+    {
+      "label": "Run Worker",
+      "type": "shell",
+      "command": "..\\venv\\scripts\\python",
+      "args": [
+        "main.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/Worker"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
 
 
 

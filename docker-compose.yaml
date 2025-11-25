@@ -7,12 +7,7 @@ services:
       POSTGRES_URL: postgres
       EMBEDAPIURL: embedapi
       QDRANTDB: qdrantdb
-
-
-    depends_on:
-      - worker
-      - messagequeue
-      - embedapi
+      APP_DATA: /data
 
     ports:
       - 3000:3000
@@ -20,12 +15,17 @@ services:
     volumes:
       - ./data:/data
 
-  worker:
-    image: gallery--worker
-    build: ./Worker
+    restart: always
 
-    environment:
-      - RABBITMQ_HOST=messagequeue
+  # worker:
+  #   image: gallery--worker
+  #   build: ./Worker
+
+  #   environment:
+  #     - RABBITMQ_HOST=messagequeue
+  #   volumes:
+  #     - ./data:/data
+
 
   messagequeue:
     image: rabbitmq:management-alpine
@@ -33,9 +33,9 @@ services:
       - "5672:5672"     # AMQP
       - "15672:15672"   # Management UI
 
-  embedapi:
-    image: gallery--embed-api
-    build: ./EmbedAPI
+  # embedapi:
+  #   image: gallery--embed-api
+  #   build: ./EmbedAPI
 
   qdrantdb:
     image: qdrant/qdrant

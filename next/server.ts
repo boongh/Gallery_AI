@@ -28,8 +28,7 @@ nextapp.prepare().then(() => {
     const sqlresult = await gallerydbsql`
     SELECT * FROM galleryindex.images
     ORDER BY uploaded_at DESC
-    OFFSET ${offset}
-    LIMIT ${limit}
+    
     `;
 
     console.log("Fetched images from database:", sqlresult);

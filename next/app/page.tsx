@@ -123,7 +123,13 @@ export default function Home() {
         <div className="grid grid-cols-4 gap-4">
           {images.map((image) => (
             <div key={image.id} className="mb-4">
-              <img src={image.filepath} alt={image.filepath} width={350}/>
+              <img src={(() => {
+                if(image.thumbnail_filepath){
+                  return image.thumbnail_filepath;
+                } else {
+                  return image.filepath;
+                }
+              })()} alt={image.filepath} width={350}/>
               <p className="text-sm text-gray-500">Uploaded on: {image.uploadedAt.toDateString()}</p>
               <p className="text-sm text-gray-500">Taken on: {image.createdAt.toDateString()}</p>
             </div>
