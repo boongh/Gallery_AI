@@ -5,21 +5,31 @@ import fs from "fs";
 import path from "path";
 import amqp from "amqplib/callback_api.js";
 
+import sharp from "sharp";
+
 async function imageuploadhandlerasync(req, res){
+  const decoder = new TextDecoder("utf-8");
   const files = req.files;
   
   for (const file of files) {
+    
+    const image = sharp(file.buffer);
+    const imgmetadata = await image.metadata();
+    const exif = decoder.decode(imgmetadata.exif);
+    console.log("EXIF data: ", exif);
+    if(exif) (imgmetadata['exif'] = exif);
+
     const id = uuidv4(); // corresponds to uuid
     const format = file.mimetype; // matches "format" column
-    const filepath = path.join("images", "originals", id).toString(); // matches "filepath"
+    const originalfileurl = `images/originals/${id}.${imgmetadata.format}`; // matches "filepath"
     const thumbnail_filepath = null; // matches "thumbnail_filepath"
     const status = "pending indexing"; // matches "status"
     const created_at = new Date();
     const uploaded_at = new Date();
-    const metadata = {}; // JSON object
+    const metadata = imgmetadata; // JSON object
 
     // Save file to disk
-    const savepath = path.resolve(path.join(process.env.APP_DATA, filepath));
+    const savepath = path.resolve(path.join(process.env.APP_DATA, path.join("images", "originals", `${id}.${metadata.format}`)));
     console.log("Saving file to ", savepath);
 
     fs.mkdirSync(path.dirname(savepath), { recursive: true });
@@ -28,21 +38,25 @@ async function imageuploadhandlerasync(req, res){
     // Insert into database
     const result = await gallerydbsql`
       INSERT INTO galleryindex.images (uuid, format, filepath, thumbnail_filepath, status, created_at, uploaded_at, metadata)
-      VALUES (${id}, ${format}, ${filepath}, ${thumbnail_filepath}, ${status}, ${created_at}, ${uploaded_at}, ${gallerydbsql.json(metadata)})`;
+      VALUES (${id}, ${format}, ${originalfileurl}, ${thumbnail_filepath}, ${status}, ${created_at}, ${uploaded_at}, ${gallerydbsql.json(metadata)})`;
     
     console.log("Connecting to queue...");
-
-    amqp.connect("amqp://localhost", (error, connect) => {
+    amqp.connect(`amqp://${process.env.RABBITMQ_HOST}`, (error, connect) => {
       if (error) {
+        console.log("Connection to RabbitMQ failed:", error);
         throw error;
       }
+
       connect.createChannel((error, channel) => {
+        if (error) {
+          console.log("Creating channel failed:", error);
+          throw error;
+        }
         const queue = "image_processing_queue";
         const msg = JSON.stringify({
           uuid: id,
-          fileurlpath: filepath,
-          savepath: savepath,
-          format: format
+          fileurlpath: originalfileurl,
+          savepath: savepath
         })
 
         channel.assertQueue(queue, {

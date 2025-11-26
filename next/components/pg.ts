@@ -1,11 +1,14 @@
 import postgres from "postgres";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const gallerydbsql = postgres({
-  host: process.env.POSTGRES_URL,      // PostgreSQL server host
+  host: process.env.PGHOST,      // PostgreSQL server host
   port: 5432,             // PostgreSQL port (default 5432)
-  database: 'gallerydb',  // your database name
-  username: 'gallery',    // your user
-  password: 'gallery'     // your password
+  database: process.env.PGDATABASE,  // your database name
+  user: process.env.PGUSER,    // your user
+  password: process.env.PGPASSWORD     // your password
 });
 
 export { gallerydbsql };

@@ -4,10 +4,14 @@ services:
     build: ./next
 
     environment:
-      POSTGRES_URL: postgres
       EMBEDAPIURL: embedapi
+      RABBITMQ_HOST: messagequeue
       QDRANTDB: qdrantdb
       APP_DATA: /data
+      PGHOST: postgres
+      PGUSER: gallery
+      PGPASSWORD: gallery
+      PGDATABASE: gallerydb
 
     ports:
       - 3000:3000
@@ -17,21 +21,44 @@ services:
 
     restart: always
 
-  # worker:
-  #   image: gallery--worker
-  #   build: ./Worker
+    depends_on:
+      messagequeue:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      
 
-  #   environment:
-  #     - RABBITMQ_HOST=messagequeue
-  #   volumes:
-  #     - ./data:/data
+  worker:
+    image: gallery--worker
+    build: ./Worker
 
+    environment:
+      RABBITMQ_HOST: messagequeue
+      POSTGRES_HOST: postgres
+      APP_DATA: /data
+      POSTGRES_USER: gallery
+      POSTGRES_PASSWORD: gallery
+      POSTGRES_DB: gallerydb
+
+    volumes:
+      - ./data:/data
+
+    depends_on:
+      messagequeue:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   messagequeue:
     image: rabbitmq:management-alpine
     ports:
       - "5672:5672"     # AMQP
       - "15672:15672"   # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
   # embedapi:
   #   image: gallery--embed-api
@@ -54,6 +81,13 @@ services:
     volumes:
       - ./data/postgres/data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
 
 volumes:
   pgdata:

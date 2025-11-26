@@ -13,6 +13,7 @@
     "amqplib": "^0.10.9",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "multer": "^2.0.2",
     "next": "16.0.3",
@@ -20,6 +21,7 @@
     "postgres": "^3.4.7",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "sharp": "^0.34.5",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
