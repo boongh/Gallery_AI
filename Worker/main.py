@@ -63,31 +63,42 @@ def main():
         conn.close();
         
     def workercallback(ch, method, properties, body):
-        jsonbody = json.loads(body);
-        urlpath = jsonbody['fileurlpath'];
-        savepath = jsonbody['savepath'];
-        
-        #Database variables set up
-        uuid = jsonbody['uuid'];
-        
-        # Generate thumbnail
-        dirurl = osp.dirname(osp.dirname(urlpath));
-        
-        
-        thumbnail_path = osp.join(os.getenv("APP_DATA", osp.join("..", "data")), dirurl, "thumbnails");
-        thumbnail_urlpath = f'{dirurl}/thumbnails/{uuid}.jpg';
-        
-        os.makedirs(thumbnail_path, exist_ok=True);
-        
-        generate_thumbnail(savepath, osp.join(thumbnail_path, uuid + ".jpg"));
-        print(f"Generated thumbnail for {savepath} at {thumbnail_path}");
-        
-        update_database_thumbnail(uuid, thumbnail_urlpath);
-        print(f"Updated database entry for {uuid} with thumbnail path {thumbnail_urlpath}");
+        try:
+            jsonbody = json.loads(body);
+            print("Got req for ", jsonbody)
+            
+            urlpath = jsonbody['fileurlpath'];
+            savepath = jsonbody['savepath'];
+            
+            #Database variables set up
+            uuid = jsonbody['uuid'];
+            
+            # Generate thumbnail
+            categorypath = "images";
+            
+            thumbnail_path = osp.join(os.getenv("APP_DATA", osp.join("..", "data")), categorypath, "thumbnails");
+            thumbnail_urlpath = f'{categorypath}/thumbnails/{uuid}.jpg';
+            
+            print({
+                "dir_url" : categorypath,
+                "thumbnail_path" : thumbnail_path,
+                "savepath" : osp.join(thumbnail_path, uuid + ".jpg"),
+                "APP_DATA" : os.getenv("APP_DATA")
+            })
+            
+            os.makedirs(thumbnail_path, exist_ok=True);
+            
+            generate_thumbnail(savepath, osp.join(thumbnail_path, uuid + ".jpg"));
+            print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid + ".jpg")}");
+            
+            update_database_thumbnail(uuid, thumbnail_urlpath);
+            print(f"Updated database entry for {uuid} with thumbnail path {thumbnail_urlpath}");
+        except:
+            print("exception occured in worker callback")
         
         
     connection = wait_for(connect_to_rabbitmq, "RabbitMQ", timeout=20);
-    print(" RabbitMQ connected successfully")
+    print("RabbitMQ connected successfully")
     
     channel = connection.channel();
 

@@ -1,0 +1,20 @@
+info:
+  contact: {}
+  description: API for interacting with the media server
+  title: Media Server API
+  version: "0.1"
+paths:
+  /gms/upload/images:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload images via form data in the field "files"
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+      summary: Upload images
+      tags:
+      - Upload
+swagger: "2.0"

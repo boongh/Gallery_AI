@@ -44,13 +44,13 @@ export default function Home() {
       const formData = new FormData();
       if (selectedImages) {
         for (let i = 0; i < selectedImages.length; i++) {
-          formData.append('images', selectedImages[i]);
+          formData.append('files', selectedImages[i]);
         }
       }
 
-      fetch('/api/upload', {
+      fetch('/gms/upload/images', {
         method: 'POST',
-        body: formData,
+        body: formData, 
       }).then(response => response.arrayBuffer()).then(data => {
         const decoder = new TextDecoder("utf-8");
         console.log("Upload response received");

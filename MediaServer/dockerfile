@@ -1,0 +1,5 @@
+FROM golang:tip-alpine3.22
+
+COPY . .
+
+CMD [go build ]

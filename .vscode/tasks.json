@@ -71,6 +71,46 @@
         "panel": "new"
       }
     },
+    {
+      "label": "Run NGINX",
+      "type": "shell",
+      "command": "nginx",
+      "args": [
+        "-c",
+        "conf\\nginx.config"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/nginx"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Run Media Server",
+      "type": "shell",
+      "command": "go",
+      "args": [
+        "run",
+        "."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/MediaServer"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
 
 
 

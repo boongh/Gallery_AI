@@ -151,72 +151,111 @@ package backends{
     component "Redis Pub Sub" {
         [System Metric (Realtime)]
     }
-}
 
-component Next{
-    [Frontend]
+    component "Go Media Server" as GMS{
 
-    component express {
-
-        [/api/admin/status/ws]
-        [Frontend] <-> [/api/admin/status/ws] : WebSocket?
-        [/api/admin/status/ws] <-> [System Metric (Realtime)] : Handles real time \nupdate to state
-        [/api/admin/status/ws] <-> [System Metric] : Handles persistent \nupdate to disk
+    [/admin/status/ws] as statusws
+    statusws <-> [System Metric (Realtime)] : Handles real time \nupdate to state
+    statusws <-> [System Metric] : Handles persistent \nupdate to disk
 
 
-        package uploadpipeline{
+    package uploadpipeline{
         
-            [/api/upload]
-            [/api/upload] <-> [Image Hash Check] : Check for exact repeat
-            [Image Hash Check] --> [Image Hash]
-    
-            [/api/upload] --> [?allowdupe=true] : No repeat filters
-    
-            [Image Hash Check] --> [Generate UUID] : Non repeated image
-            [?allowdupe=true] --> [Generate UUID] : All images
-    
-            [Save image to disk] as Saveimgdisk
-    
-            [Generate UUID] --> Saveimgdisk
-            Saveimgdisk --> [Image Index]
-            Saveimgdisk --> [Image Hash]
-            Saveimgdisk --> [Exchange]
-            Saveimgdisk --> [System Metric (Realtime)]
-        
+        json Methods_API_upload_images{
+        "POST" : "Uploads a list of images"
         }
-        
+        [/upload/images] as imguploadendp
+        imguploadendp ..> Methods_API_upload_images
+        imguploadendp <-> [Image Hash Check] : Check for exact repeat
+        [Image Hash Check] --> [Image Hash]
+
+        imguploadendp --> [?allowdupe=true] : No repeat filters
+
+        [Image Hash Check] --> [Generate UUID] : Non repeated image
+        [?allowdupe=true] --> [Generate UUID] : All images
+
+        [Save image to disk] as Saveimgdisk
+
+        [Generate UUID] --> Saveimgdisk
+        Saveimgdisk --> [Image Index]
+        Saveimgdisk --> [Image Hash]
+        Saveimgdisk --> [Exchange]
+        Saveimgdisk --> [System Metric (Realtime)]
+    
+    }
+    package "Search Pipeline" as search{
+
         package textsemsearchpipeline{
 
-            [/api/textsem=text?offset=0] as [/api/textsem=text]
-            [/api/textsem=text] --> (Check Text Hash)
+            [/search/textsem?text=query] as textsemsearch
+            textsemsearch --> (Check Text Hash)
             (Check Text Hash) --> [Text Hash] : Fetch past queries
             (Check Text Hash) --> [Get new text embed] : Novel Query
             [Get new text embed] <-> textembedapi
             [Get new text embed] <-- [Vector Image Index] : New Embedding Query
-            [Get new text embed] --> [Get Thumbnails]
-            [Get Thumbnails] --> [Image Index]
-            [Get Thumbnails] --> [/api/textsem=text]
-        
+            [Get new text embed] --> [Get image indices]
+            [Get image indices] --> [Image Index]
+
+            '[Get image indices] --> textsemsearch
         }
 
 
-        package colquerypipeline{
-            [/api/collection/name]
-            [Frontend] <-> [/api/collection/name] : Search by collection
-            [/api/collection/name] --> [Get all images in a collection]
-            [Get all images in a collection] --> [Image In Collection]
-            [Get all images in a collection] --> [Get Collection Name]
-            [Get Collection Name] --> [Image Collection Names]
-            [/api/collection/name] --> [System Metric (Realtime)]
-        }
     }
 
 
-    [Frontend] --> [/api/upload] : Form data image
-    [Frontend] <-- [/api/upload] : Repeated img warning
+    package colquerypipeline{
+        
+        json "Methods_API_Collection" {
+        "GET" : "Get all available collections",
+        "POST": "Create a new collection"
+        }
 
-    [Frontend] <-> [/api/textsem=text] : Text semantic search
+        json "Methods_API_Specific_Collection" {
+        "GET" : "Get info about that collection",
+        "PATCH" : "Edit info about that collection",
+        "DELETE" : "Delete the collection"
+        }
+
+        json "Methods_API_Specific_Collection_Images" {
+        "GET" : "Get all images in the collection",
+        "POST": "Insert (a) new image(s)",
+        "DELETE" : "Delete an image from the collection"
+        }
+
+        [/collection/:id] as specificCollection
+        [/collection/:id/images] as specColImages
+        specificCollection --> [System Metric (Realtime)]
+
+        specColImages ..> Methods_API_Specific_Collection_Images
+
+        [/collection] ..> Methods_API_Collection
+
+
+        specificCollection ..> Methods_API_Specific_Collection
+
+        
+    }
+}
 }
 
+
+component Next{
+    [Frontend]
+
+    [Frontend] <-> statusws
+
+    [Frontend] --> imguploadendp : Form data image
+    [Frontend] <-- imguploadendp : Repeated img warning
+    [Frontend] <-> specificCollection : Search by collection
+    [Frontend] <-> textsemsearch : Text semantic search
+}
+
+component NGINX{
+    [nginx] --> [GMS] : Media Server API endpoints with /gms (go media server)
+    
+    [nginx] --> [Frontend] : Next frontend (default)
+}
+
+(user) --> [nginx]
 
 @enduml

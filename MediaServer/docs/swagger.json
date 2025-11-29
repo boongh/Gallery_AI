@@ -1,0 +1,31 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API for interacting with the media server",
+        "title": "Media Server API",
+        "contact": {},
+        "version": "0.1"
+    },
+    "paths": {
+        "/gms/upload/images": {
+            "post": {
+                "description": "Upload images via form data in the field \"files\"",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Upload"
+                ],
+                "summary": "Upload images",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        }
+    }
+}

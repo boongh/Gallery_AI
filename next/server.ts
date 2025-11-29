@@ -3,7 +3,8 @@ import next from "next";
 import multer from "multer";
 import { imageuploadhandlerasync } from "./components/imageupload.ts";
 import path from "node:path";
-import { gallerydbsql } from "./components/pg.ts";
+import { imagequery } from "./components/imagequery.ts";
+import { putImageInCollection, deleteImageFromCollection, getImageFromCollection } from "./components/collectionupdate.ts";
 
 const PORT = 3000;
 const nextapp = next({ dev: true });
@@ -18,21 +19,26 @@ nextapp.prepare().then(() => {
     res.json({ message: "Hello world" });
   });
   
-  server.post("/api/upload", upload.array("images"), imageuploadhandlerasync);
+  // server.get("/api/collections");
+  // server.post("/api/collections")
 
+  //!/TODO
+  //!/Non of the get delete works
+  server.get("/api/collections/images", getImageFromCollection)
+  server.delete("/api/collections/images", deleteImageFromCollection);
+  
+  server.post("/api/collections/images", putImageInCollection);
+  
+  
+  server.post("/api/images/upsert", upload.array("images"), imageuploadhandlerasync);
   server.get("/api/images", async (req, res) => {
-    let { offset, limit } = req.query;
-    if(offset == undefined || (typeof offset) != 'number') offset = (0).toString();
-    if(limit == undefined || (typeof limit) != 'number') limit = (100).toString();
-
-    const sqlresult = await gallerydbsql`
-    SELECT * FROM galleryindex.images
-    ORDER BY uploaded_at DESC
-    OFFSET ${parseInt(offset.toString())}
-    LIMIT ${parseInt(limit.toString())}
-    `;
+    const { offset, limit, collection } = req.query;
     
-    res.send(sqlresult);
+    res.send(await imagequery({
+      offset: parseInt(offset as string),
+      limit: parseInt(limit as string),
+      collection: collection as string,
+      }));
   })
 
   server.get("/images/:type/:uuid", (req, res) => {

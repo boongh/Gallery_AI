@@ -27,7 +27,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <div className="flex flex-row w-vw grow">
+          <div>
+            <h1 className="text-2xl font-bold">Image Gallery</h1>
+          </div>
+          <div className="grow">
+            {children}
+          </div>
+        </div> 
       </body>
     </html>
   );
