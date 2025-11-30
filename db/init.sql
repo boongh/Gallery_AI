@@ -35,6 +35,7 @@ CREATE TABLE collections.collection_data (
     created_at TIMESTAMP DEFAULT now(),
     name TEXT NOT NULL,
     description TEXT,
+    thumbnail_filepath TEXT,
     metadata JSONB
 );
 

@@ -1,4 +1,4 @@
-package upload
+package mediahandler
 
 import (
 	"context"
@@ -12,48 +12,29 @@ import (
 	"strings"
 	"time"
 
+	"MediaServer/serverutils"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func ImageUploadHandler(c *gin.Context) error {
+type msg_type struct {
+	UUID        string `json:"uuid"`
+	FILEURLPATH string `json:"fileurlpath"`
+	SAVEPATH    string `json:"savepath"`
+}
 
-	pgcon := failOnError(func() (*pgx.Conn, error) {
-		return pgx.Connect(context.Background(),
-			fmt.Sprintf("postgres://%s:%s@%s:%s/%s",
-				os.Getenv("PGUSER"),
-				os.Getenv("PGPASSWORD"),
-				os.Getenv("PGHOST"),
-				os.Getenv("PGPORT"),
-				os.Getenv("PGDATABASE")))
-	}, "successfully connected to postgres", "postgress connection error", context.Background())
+type Server struct {
+	Pool *pgxpool.Pool
+}
 
-	rbmqconn := failOnError(func() (*amqp.Connection, error) {
-		return amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%s/",
-			os.Getenv("RABBITUSER"),
-			os.Getenv("RABBITPASSWORD"),
-			os.Getenv("RABBITHOST"),
-			os.Getenv("RABBITPORT"),
-		))
-	}, "successfully connected to rbmq", "failed to connect to rbmq", context.Background())
+func MediaUploadHandler(c *gin.Context) error {
 
-	form := failOnError(func() (*multipart.Form, error) {
-		return c.MultipartForm()
-	}, "successfully parsed form", "fail to parse form", context.Background())
-
-	defer rbmqconn.Close()
-	defer pgcon.Close(context.Background())
-
-	ch := failOnError(func() (*amqp.Channel, error) {
-		return rbmqconn.Channel()
-	}, "", "failed to connecto to channel", context.Background())
-
-	defer ch.Close()
-
-	q := failOnError(func() (amqp.Queue, error) {
-		return ch.QueueDeclare(
+	q := serverutils.FailOnError(func() (amqp.Queue, error) {
+		return serverutils.Rabbitmqchannel.QueueDeclare(
 			"image_processing_queue", // name
 			true,                     // durable
 			false,                    // delete when unused
@@ -63,6 +44,10 @@ func ImageUploadHandler(c *gin.Context) error {
 		)
 	}, "", "failed to initialize queue", context.Background())
 
+	form := serverutils.FailOnError(func() (*multipart.Form, error) {
+		return c.MultipartForm()
+	}, "successfully parsed form", "fail to parse form", context.Background())
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	files := form.File["files"]
@@ -71,20 +56,16 @@ func ImageUploadHandler(c *gin.Context) error {
 	entries := [][]any{}
 
 	for _, file := range files {
-		type msg_type struct {
-			UUID        string `json:"uuid"`
-			FILEURLPATH string `json:"fileurlpath"`
-			SAVEPATH    string `json:"savepath"`
-		}
 
 		image_uuid := uuid.New().String()
 		extension := strings.Split(file.Header.Get("Content-Type"), "/")
 		fmt.Println(extension)
 		savefilename := image_uuid + "." + extension[len(extension)-1]
-		saveurl := "/images/originals/" + savefilename
+		saveurl := "/media/originals/" + savefilename
 
 		savefilepath, fperr := filepath.Abs(os.Getenv("APP_DATA") + "/" + saveurl)
 		_ = fperr
+
 		saverr := c.SaveUploadedFile(file, savefilepath)
 
 		if saverr != nil {
@@ -116,7 +97,7 @@ func ImageUploadHandler(c *gin.Context) error {
 		}
 
 		fmt.Printf("parsed %v", jsonpub)
-		chpuberr := ch.PublishWithContext(ctx,
+		chpuberr := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
 			"",     // exchange
 			q.Name, // routing key
 			false,  // mandatory
@@ -133,7 +114,7 @@ func ImageUploadHandler(c *gin.Context) error {
 		}
 	}
 
-	_, err := pgcon.CopyFrom(context.Background(), pgx.Identifier{"galleryindex", "images"}, []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}, pgx.CopyFromRows(entries))
+	_, err := serverutils.Postgrespool.CopyFrom(context.Background(), pgx.Identifier{"galleryindex", "images"}, []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}, pgx.CopyFromRows(entries))
 
 	if err != nil {
 		return fmt.Errorf("fail to insert into database %s", err)

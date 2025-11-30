@@ -108,6 +108,12 @@ package databases{
 
 }
 
+database "Disk"{
+    [originals]
+    [thumbnails]
+    [defaults]
+}
+
 package backends{
 
     component RabbitMQ {
@@ -119,8 +125,9 @@ package backends{
         [Embed queue] --> [Read files]
         
         'Gen thumbnail and save
-        [Read files] --> [Generate thumbnail \n& save to disk] 
-        [Generate thumbnail \n& save to disk] --> [Image Index] : : Check if thumbnail \nalready exist
+        [Read files] --> [Generate thumbnail]
+        [Generate thumbnail] --> [thumbnails]
+        [Generate thumbnail] --> [Image Index] : Check if thumbnail \nalready exist
         
         'Semantic Search worker
         [Read files] --> [Embed image]
@@ -143,8 +150,6 @@ package backends{
     component EmbedAPI{
         port text as textembedapi
         port image as imageembedapi
-    
-    
         textembedapi <-> [Embed text]
     }
     
@@ -159,36 +164,66 @@ package backends{
     statusws <-> [System Metric] : Handles persistent \nupdate to disk
 
 
-    package uploadpipeline{
+    package mediaactionspipeline{
         
-        json Methods_API_upload_images{
-        "POST" : "Uploads a list of images"
+        json Methods_API_media_action{
+        "POST"  : "Uploads a list of medias",
+        "GET"   : "Get list of medias available to the user"
         }
-        [/upload/images] as imguploadendp
-        imguploadendp ..> Methods_API_upload_images
-        imguploadendp <-> [Image Hash Check] : Check for exact repeat
-        [Image Hash Check] --> [Image Hash]
+        
+        [/media] as mediaendpoint
+        mediaendpoint ..> Methods_API_media_action
+        package MediaUploadPipeline{
+            [media upload] as imguploadendp
+            mediaendpoint --> imguploadendp : POST
+            imguploadendp <-> [Image Hash Check] : Check for exact repeat
+            [Image Hash Check] --> [Image Hash]
 
-        imguploadendp --> [?allowdupe=true] : No repeat filters
+            imguploadendp --> [?allowdupe=true] : No repeat filters
 
-        [Image Hash Check] --> [Generate UUID] : Non repeated image
-        [?allowdupe=true] --> [Generate UUID] : All images
+            [Image Hash Check] --> [Generate UUID] : Non repeated image
+            [?allowdupe=true] --> [Generate UUID] : All images
 
-        [Save image to disk] as Saveimgdisk
+            [Save image to disk] as Saveimgdisk
 
-        [Generate UUID] --> Saveimgdisk
-        Saveimgdisk --> [Image Index]
-        Saveimgdisk --> [Image Hash]
-        Saveimgdisk --> [Exchange]
-        Saveimgdisk --> [System Metric (Realtime)]
-    
-    }
-    package "Search Pipeline" as search{
+            [Generate UUID] --> Saveimgdisk
+            Saveimgdisk --> [originals]
+            Saveimgdisk --> [Image Index]
+            Saveimgdisk --> [Image Hash]
+            Saveimgdisk --> [Exchange]
+            Saveimgdisk --> [System Metric (Realtime)]
+        }
 
-        package textsemsearchpipeline{
+        package SimpleQueryPipeline{
+            json "Query Parsing" as simplequeryparsing{
+                "want"      : "Hyphen separated values for fields wanted in response \\neg 'uuid-filepath-thumbnail_filepath'",
+                "offset"    : "Offset of the response list",
+                "limit"     : "Limit of response list",
+                "order-by"  : "Hyphen separated values of attribute to order and by what \\neg 'asc-uploaded_at'"
+            }
 
-            [/search/textsem?text=query] as textsemsearch
-            textsemsearch --> (Check Text Hash)
+            mediaendpoint --> simplequeryparsing : GET
+            simplequeryparsing --> [Check Cache]
+            [Check Cache] --> [DB Query]
+            [DB Query] --> [Image Index]
+            [Check Cache] --> [Custom caching]
+
+
+
+            json CacheStruct {
+                "Limited size"  : "As to not eat up all the memory",
+                "Hash of query" :   "Hash of the query parameters except offset and limits",
+                "Map of lists of maps"  :   "Map offers fast random lookup, \\nmaps into a list which offers efficient sequential data lookup, \\nof a map which can be parsed into json easily"
+            }
+
+            [Custom caching] --> CacheStruct
+
+        }
+        
+        package AdvancedQueryPipeline{
+            [/media/query] as queryEndpoint
+            mediaendpoint --> queryEndpoint
+            queryEndpoint --> (Check Text Hash)
             (Check Text Hash) --> [Text Hash] : Fetch past queries
             (Check Text Hash) --> [Get new text embed] : Novel Query
             [Get new text embed] <-> textembedapi
@@ -196,12 +231,9 @@ package backends{
             [Get new text embed] --> [Get image indices]
             [Get image indices] --> [Image Index]
 
-            '[Get image indices] --> textsemsearch
         }
-
-
+    
     }
-
 
     package colquerypipeline{
         
@@ -228,8 +260,17 @@ package backends{
 
         specColImages ..> Methods_API_Specific_Collection_Images
 
-        [/collection] ..> Methods_API_Collection
 
+        [Generate generate thumbnail if given] as collectionthumbnailgen
+        [/collection] --> collectionthumbnailgen : If given a thumbnail file \n to generate from, generate a thumbnail file?
+        collectionthumbnailgen --> [Copy the thumbnail file and save as a thumbnail] : If given uuid to generate thumbnail from?
+        [Copy the thumbnail file and save as a thumbnail] <-- [Image Index] : Get thumbnail file path
+        [Copy the thumbnail file and save as a thumbnail] --> [Use default if nothing was given]
+        [Use default if nothing was given] --> [Image Collection Names]
+        
+        [/collection] ..> Methods_API_Collection
+        [/collection] --> specificCollection
+        [/collection] --> specColImages
 
         specificCollection ..> Methods_API_Specific_Collection
 
@@ -244,10 +285,8 @@ component Next{
 
     [Frontend] <-> statusws
 
-    [Frontend] --> imguploadendp : Form data image
-    [Frontend] <-- imguploadendp : Repeated img warning
-    [Frontend] <-> specificCollection : Search by collection
-    [Frontend] <-> textsemsearch : Text semantic search
+    [Frontend] <--> mediaendpoint : Form data image : Repeated image warning
+    [Frontend] <-> [/collection] : Search by collection
 }
 
 component NGINX{

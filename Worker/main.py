@@ -74,21 +74,15 @@ def main():
             uuid = jsonbody['uuid'];
             
             # Generate thumbnail
-            categorypath = "images";
+            categorypath = "media";
             
             thumbnail_path = osp.join(os.getenv("APP_DATA", osp.join("..", "data")), categorypath, "thumbnails");
             thumbnail_urlpath = f'{categorypath}/thumbnails/{uuid}.jpg';
             
-            print({
-                "dir_url" : categorypath,
-                "thumbnail_path" : thumbnail_path,
-                "savepath" : osp.join(thumbnail_path, uuid + ".jpg"),
-                "APP_DATA" : os.getenv("APP_DATA")
-            })
-            
             os.makedirs(thumbnail_path, exist_ok=True);
             
             generate_thumbnail(savepath, osp.join(thumbnail_path, uuid + ".jpg"));
+            print(f"At {time.time_ns()}")
             print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid + ".jpg")}");
             
             update_database_thumbnail(uuid, thumbnail_urlpath);

@@ -1,6 +1,14 @@
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@mantine/core/styles.css";
+import { theme } from "../theme.ts";
+import Link from 'next/link'
+import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
+import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from '@mantine/modals';
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,18 +31,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" {...mantineHtmlProps}>
+      <head>
+        <ColorSchemeScript />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="flex flex-row w-vw grow">
-          <div>
-            <h1 className="text-2xl font-bold">Image Gallery</h1>
-          </div>
-          <div className="grow">
-            {children}
-          </div>
-        </div> 
+        <MantineProvider theme={theme} defaultColorScheme="dark">
+        <ModalsProvider>
+            <div className="flex flex-row max-w-full overflow-x-hidden">
+              <div className="flex flex-col w-48 shrink-0">
+                <h1 className="text-4xl font-bold">Image Gallery</h1>
+                <Link href="/">Home</Link>
+                <Link href="/collection">Collection</Link>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {children}
+              </div>
+            </div>
+          </ModalsProvider>
+        </MantineProvider>
       </body>
     </html>
   );

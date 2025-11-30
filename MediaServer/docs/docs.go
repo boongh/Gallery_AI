@@ -15,7 +15,121 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/gms/upload/images": {
+        "/gms/collection": {
+            "get": {
+                "description": "Query for all available collections to a specific user by the parameter specified",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Query"
+                ],
+                "summary": "Query for available collections",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "What attributes are wanted in the response",
+                        "name": "want",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offsets from the first response table order",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many entries is wanted in the response",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new collection entry with a specified name and description",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Creation"
+                ],
+                "summary": "Create a new collection",
+                "parameters": [
+                    {
+                        "description": "The collection data to create",
+                        "name": "collection",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/collection.NewCollection"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/collection.NewCollection"
+                        }
+                    }
+                }
+            }
+        },
+        "/gms/media": {
+            "get": {
+                "description": "Query for media available to a user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Query"
+                ],
+                "summary": "Query for media test for changs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Offset from the first of an ordered list",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit the number of entries returned",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Which order is it in",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Which attribute are the entries ordered by",
+                        "name": "by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Which attributes are wanted in the response",
+                        "name": "want",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            },
             "post": {
                 "description": "Upload images via form data in the field \"files\"",
                 "consumes": [
@@ -25,13 +139,26 @@ const docTemplate = `{
                     "text/plain"
                 ],
                 "tags": [
-                    "Upload"
+                    "Creation"
                 ],
                 "summary": "Upload images",
                 "responses": {
                     "200": {
                         "description": "OK"
                     }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "collection.NewCollection": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         }

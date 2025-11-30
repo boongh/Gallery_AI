@@ -1,11 +1,11 @@
 package main
 
 import (
+	"MediaServer/serverutils"
 	"fmt"
 	"log"
 	"net/http"
 
-	"apihandler.com/upload"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
@@ -19,22 +19,6 @@ import (
 //@version 0.1
 //@description API for interacting with the media server
 //@scheme http
-
-// @Summary		Upload images
-// @Schemes		http
-// @Description	Upload images via form data in the field "files"
-// @Tags			Upload
-// @Accept			multipart/form-data
-// @Produce		text/plain
-// @Success		200
-// @Router			/gms/upload/images [POST]
-func imgupload(c *gin.Context) {
-	err := upload.ImageUploadHandler(c)
-	if err != nil {
-		log.Println("Image Upload Fail:", err)
-		c.Status(500)
-	}
-}
 
 func main() {
 	//Init
@@ -52,6 +36,13 @@ func main() {
 	server := gin.Default()
 	server.MaxMultipartMemory = (8 << 20)
 
+	pgconnection := serverutils.PostgresConnect()
+	rbmqconnect, rbmqchannel, _ := serverutils.RabbitMQConnect("")
+
+	defer pgconnection.Close()
+	defer rbmqconnect.Close()
+	defer rbmqchannel.Close()
+
 	//End init
 
 	// Define a simple GET endpoint
@@ -63,7 +54,17 @@ func main() {
 	})
 
 	//Upload
-	server.POST("/upload/images", imgupload)
+	{
+		uploadgroup := server.Group("/media")
+		uploadgroup.POST("", mediaupload)
+		uploadgroup.GET("", MediaQuery)
+	}
+
+	{
+		colgroup := server.Group("/collection")
+		colgroup.GET("", CollectionQueryHandler)
+		colgroup.POST("", CollectionCreationHandler)
+	}
 
 	server.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

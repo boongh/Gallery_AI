@@ -1,10 +1,94 @@
+definitions:
+  collection.NewCollection:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
 info:
   contact: {}
   description: API for interacting with the media server
   title: Media Server API
   version: "0.1"
 paths:
-  /gms/upload/images:
+  /gms/collection:
+    get:
+      description: Query for all available collections to a specific user by the parameter
+        specified
+      parameters:
+      - description: What attributes are wanted in the response
+        in: query
+        name: want
+        required: true
+        type: string
+      - description: Offsets from the first response table order
+        in: query
+        name: offset
+        type: integer
+      - description: How many entries is wanted in the response
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+      summary: Query for available collections
+      tags:
+      - Query
+    post:
+      description: Create a new collection entry with a specified name and description
+      parameters:
+      - description: The collection data to create
+        in: body
+        name: collection
+        required: true
+        schema:
+          $ref: '#/definitions/collection.NewCollection'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/collection.NewCollection'
+      summary: Create a new collection
+      tags:
+      - Creation
+  /gms/media:
+    get:
+      description: Query for media available to a user
+      parameters:
+      - description: Offset from the first of an ordered list
+        in: query
+        name: offset
+        type: integer
+      - description: Limit the number of entries returned
+        in: query
+        name: limit
+        type: integer
+      - description: Which order is it in
+        in: query
+        name: order
+        type: string
+      - description: Which attribute are the entries ordered by
+        in: query
+        name: by
+        type: string
+      - description: Which attributes are wanted in the response
+        in: query
+        name: want
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+      summary: Query for media test for changs
+      tags:
+      - Query
     post:
       consumes:
       - multipart/form-data
@@ -16,5 +100,5 @@ paths:
           description: OK
       summary: Upload images
       tags:
-      - Upload
+      - Creation
 swagger: "2.0"

@@ -1,4 +1,4 @@
-package errorlogs
+package serverutils
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 type functWithErr[T any] func() (T, error)
 
-func failOnError[T any](f func() (T, error), succ string, fail string, ctx context.Context) T {
+func FailOnError[T any](f func() (T, error), succ string, fail string, ctx context.Context) T {
 
 	resultch := make(chan struct {
 		v   T

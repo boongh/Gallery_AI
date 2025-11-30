@@ -1,6 +1,9 @@
 'use client';
 import Image from "next/image";
 import React, { useEffect } from "react";
+import { useDisclosure } from '@mantine/hooks';
+import { Modal, Button, SimpleGrid } from '@mantine/core';
+import { modals } from '@mantine/modals';
 
 class ImageData {
   // ID and metadata
@@ -14,7 +17,7 @@ class ImageData {
   metaData: object;
 
   constructor(
-    id: string,
+    uuid: string,
     format: string,
     filepath: string,
     thumbnail_filepath: string,
@@ -23,7 +26,7 @@ class ImageData {
     createdAt: Date,
     metaData: object = {}
   ) {
-    this.id = id;
+    this.id = uuid;
     this.format = format;
     this.filepath = filepath;
     this.thumbnail_filepath = thumbnail_filepath;
@@ -48,9 +51,9 @@ export default function Home() {
         }
       }
 
-      fetch('/gms/upload/images', {
+      fetch('/gms/media', {
         method: 'POST',
-        body: formData, 
+        body: formData,   
       }).then(response => response.arrayBuffer()).then(data => {
         const decoder = new TextDecoder("utf-8");
         console.log("Upload response received");
@@ -73,7 +76,7 @@ export default function Home() {
     (async () => {
 
       try{
-        const fetchImages = fetch('/api/images?offset=0&limit=10')
+        const fetchImages = fetch('/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at')
         .then(response => response.json())
 
         const imageData = await  fetchImages;
@@ -100,11 +103,18 @@ export default function Home() {
     })();
     
   }, [galleryRefreshes]);
-  
 
+  const openModal = () =>
+    modals.open({
+      title: 'Hello!',
+      children: (
+        <div>
+          This modal was opened without storing any state.
+        </div>
+      ),
+    });
   return (
-    <div className="flex flex-col items-center min-h-screen py-2">
-      <h1 className="">Header 1</h1>
+    <div className="flex flex-col w-full items-center">
       <div className="p-16">
         <h2>Upload images</h2>
         <form>
@@ -119,22 +129,20 @@ export default function Home() {
         </form>
       </div>
       <h2>View images</h2>
-      <div className="w-max">
-        <div className="grid grid-cols-4 gap-4">
-          {images.map((image) => (
-            <div key={image.id} className="mb-4">
-              <img src={(() => {
-                if(image.thumbnail_filepath){
-                  return image.thumbnail_filepath;
-                } else {
-                  return image.filepath;
-                }
-              })()} alt={image.filepath} width={350}/>
-              <p className="text-sm text-gray-500">Uploaded on: {image.uploadedAt.toDateString()}</p>
-              <p className="text-sm text-gray-500">Taken on: {image.createdAt.toDateString()}</p>
-            </div>
-          ))}
-        </div>
+        <div className="w-full columns-xs gap-2"> 
+        {images.map((image) => (
+          <img key={image.id} src={(() => {
+            if(image.thumbnail_filepath){
+              return image.thumbnail_filepath;
+            } else {
+              return image.filepath;
+            }
+          })()} alt={image.filepath}
+          className="rounded-md pb-1 pt-1 w-full"
+          />
+            // <p className="text-sm text-gray-500">Uploaded on: {image.uploadedAt.toDateString()}</p>
+          // <p className="text-sm text-gray-500">Taken on: {image.createdAt.toDateString()}</p>
+        ))}
       </div>
     </div>
   );
