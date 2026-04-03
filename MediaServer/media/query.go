@@ -21,6 +21,11 @@ type MediaQueryParam struct {
 	Want   string `form:"want"`
 }
 
+type PaginatedResponse struct {
+	Content []map[string]interface{} `json:"content"`
+	Next    string                   `json:"next,omitempty"`
+}
+
 func QueryMedia(c *gin.Context) error {
 	var param MediaQueryParam
 	if c.BindQuery(&param) != nil {
@@ -55,7 +60,7 @@ func QueryMedia(c *gin.Context) error {
 		log.Fatalf("query fails %s", err)
 	}
 
-	var result []map[string]interface{}
+	var qresult []map[string]interface{}
 	for rows.Next() {
 		newval, _ := rows.Values()
 
@@ -77,10 +82,18 @@ func QueryMedia(c *gin.Context) error {
 			}
 		}
 
-		result = append(result, rowmap)
+		qresult = append(qresult, rowmap)
 	}
 
-	c.JSON(200, result)
+	var nextURL string
+	if len(qresult) == param.Limit {
+		nextURL = fmt.Sprintf("/media?offset=%d&limit=%d&want=%s", param.Offset+param.Limit, param.Limit, param.Want)
+	}
+
+	c.JSON(200, PaginatedResponse{
+		Content: qresult,
+		Next:    nextURL,
+	})
 
 	return nil
 }

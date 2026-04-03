@@ -1,5 +1,7 @@
 FROM nginx:mainline-alpine
 
-COPY . .
+COPY /conf/nginx.config /etc/nginx/nginx.conf
 
-CMD nginx -V
+EXPOSE 8000
+
+CMD ["nginx", "-g", "daemon off;"]

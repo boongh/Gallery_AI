@@ -1,5 +1,15 @@
-FROM golang:tip-alpine3.22
+FROM golang:alpine AS builder
+
+WORKDIR /app
 
 COPY . .
 
-CMD [go build ]
+RUN go build -o server .
+
+FROM alpine:latest AS runner
+
+COPY --from=builder /app/server server
+
+EXPOSE 8080
+
+CMD ["./server"]

@@ -35,13 +35,13 @@ services:
     environment:
       RABBITMQ_HOST: messagequeue
       POSTGRES_HOST: postgres
-      APP_DATA: /data
+      APP_DATA: data
       POSTGRES_USER: gallery
       POSTGRES_PASSWORD: gallery
       POSTGRES_DB: gallerydb
 
     volumes:
-      - ./data:/data
+      - ./data:/app/data
 
     depends_on:
       messagequeue:
@@ -79,7 +79,7 @@ services:
       - 5432:5432
 
     volumes:
-      - ./data/postgres/data:/var/lib/postgresql/data
+      - ./data/postgres/:/var/lib/postgresql/
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     
     healthcheck:
@@ -92,9 +92,39 @@ services:
   nginx:
     image: nginx-alpine
     build: ./nginx
+    ports:
+      - 8000:8000
+    volumes:
+      - ./nginx/conf/nginx.config:/etc/nginx/nginx.conf:ro
+      - ./data:/data
+
+  mediaserver:
+    image: media-server
+    build: ./MediaServer
+    
+    environment:
+      EMBEDAPIURL: embedapi
+      RABBITMQ_HOST: messagequeue
+      QDRANTDB: qdrantdb
+      APP_DATA: data
+      PGHOST: postgres
+      PGUSER: gallery
+      PGPASSWORD: gallery
+      PGDATABASE: gallerydb
+      RABBITUSER: guest
+      RABBITPASSWORD: guest
+      RABBITHOST: messagequeue
+      RABBITPORT: 5672
+    ports:
+      - 8080:8080
+    volumes:
+      - ./data:/data
+
 
 volumes:
   pgdata:
     driver: local
   qdrant_storage:
     driver: local
+  # data:
+  #   driver: local

@@ -8,6 +8,8 @@ RUN pip install --upgrade pip setuptools wheel
 COPY deps.txt .
 RUN pip install -r deps.txt
 
+COPY supervisord.conf .
+
 FROM python:3.13-slim AS runner
 
 WORKDIR /app
@@ -16,4 +18,4 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY . .
 
-CMD ["python", "main.py"]
+CMD ["supervisord", "-c", "supervisord.conf"]
