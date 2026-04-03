@@ -7,7 +7,7 @@ import amqp from "amqplib/callback_api.js";
 
 import sharp from "sharp";
 
-async function imageuploadhandlerasync(req, res){
+async function imageuploadhandlerasync(req : any, res : any){
   const decoder = new TextDecoder("utf-8");
   const files = req.files;
   
@@ -17,7 +17,6 @@ async function imageuploadhandlerasync(req, res){
     const imgmetadata = await image.metadata();
     const exif = decoder.decode(imgmetadata.exif);
     console.log("EXIF data: ", exif);
-    if(exif) (imgmetadata['exif'] = exif);
 
     const id = uuidv4(); // corresponds to uuid
     const format = file.mimetype; // matches "format" column
@@ -29,6 +28,12 @@ async function imageuploadhandlerasync(req, res){
     const metadata = imgmetadata; // JSON object
 
     // Save file to disk
+    if(process.env.APP_DATA === undefined){
+      console.error("APP_DATA environment variable is not set.");
+      res.status(500).json({ error: "Server configuration error" });
+      return;
+    }
+
     const savepath = path.resolve(path.join(process.env.APP_DATA, path.join("images", "originals", `${id}.${metadata.format}`)));
     console.log("Saving file to ", savepath);
 
@@ -38,7 +43,7 @@ async function imageuploadhandlerasync(req, res){
     // Insert into database
     const result = await gallerydbsql`
       INSERT INTO galleryindex.images (uuid, format, filepath, thumbnail_filepath, status, created_at, uploaded_at, metadata)
-      VALUES (${id}, ${format}, ${originalfileurl}, ${thumbnail_filepath}, ${status}, ${created_at}, ${uploaded_at}, ${gallerydbsql.json(metadata)})`;
+      VALUES (${id}, ${format}, ${originalfileurl}, ${thumbnail_filepath}, ${status}, ${created_at}, ${uploaded_at}, ${gallerydbsql.json(metadata as any)})`;
     
     console.log("Connecting to queue...");
     amqp.connect(`amqp://${process.env.RABBITMQ_HOST}`, (error, connect) => {

@@ -5,48 +5,48 @@ import json;
 import psycopg;
 from psycopg import sql;
 import time;
+import PIL;
 import pika.exceptions;
 import os.path as osp;
+from utils.u_rabbitmq import connect_to_rabbitmq;
+from utils.u_postgres import connect_to_postgres;
+from utils.u_waitfor import wait_for;
+import traceback
 
-def wait_for(tryer, name, timeout=5):
-
-    for i in range(timeout):
-        try:
-            return tryer();
-        except Exception as e:
-            print(f"{name} failed: {e}. Retrying in 5 seconds");
-            time.sleep(5);
-            
-    raise RuntimeError(f"{name} is not available after {timeout * 5} seconds");
-
-def connect_to_rabbitmq():
-    return pika.BlockingConnection(pika.ConnectionParameters(os.getenv("RABBITMQ_HOST", "localhost")));
-
-def connect_to_postgres():
-    return psycopg.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=5432,
-        dbname=os.getenv("POSTGRES_DB", "gallerydb"),
-        user=os.getenv("POSTGRES_USER", "gallery"),
-        password=os.getenv("POSTGRES_PASSWORD", "gallery")
-    )
-    
 def main():
     
+    print("Worker process started, waiting for RabbitMQ...");
     def generate_thumbnail(image_path, thumbnail_path):
-        from PIL import Image;
-        
-        image = Image.open(image_path);
-        image.thumbnail((512, 512));
-        image.save(thumbnail_path);
+
+        print("Importing pillow:")
+        print("2")
+
+        print("Pillow version: ", PIL.__version__)
+        print(image_path, thumbnail_path)
+        print(osp.join(os.getenv("APP_DATA")))
+        print(osp.join(os.getenv("APP_DATA"), image_path))
+
+        try:
+            from PIL import Image
+
+            image = Image.open(image_path)
+
+            print("4")
+            image.thumbnail((512, 512))
+            image.save(thumbnail_path)
+
+        except Exception as e:
+            print(f"Exception: {e}", flush=True)
+            print(traceback.format_exc(), flush=True)
+
         
     def update_database_thumbnail(uuid, thumbnail_urlpath):
-        schema = "galleryindex";
-        table = "images";
-        conn = wait_for(connect_to_postgres, "PostgreSQL");
+        schema = "galleryindex"
+        table = "images"
+        conn = wait_for(connect_to_postgres, "PostgreSQL")
         
         # Update database entry
-        cur = conn.cursor();
+        cur = conn.cursor()
 
         query = sql.SQL("""
             UPDATE {schema}.{table}
@@ -60,7 +60,7 @@ def main():
         cur.execute(query, (thumbnail_urlpath, uuid))
 
         conn.commit()
-        conn.close();
+        conn.close()
         
     def workercallback(ch, method, properties, body):
         try:
@@ -76,28 +76,32 @@ def main():
             # Generate thumbnail
             categorypath = "media";
             
-            thumbnail_path = osp.join(os.getenv("APP_DATA", osp.join("..", "data")), categorypath, "thumbnails");
-            thumbnail_urlpath = f'{categorypath}/thumbnails/{uuid}.jpg';
+            thumbnail_urlpath = osp.join(categorypath, "thumbnails", uuid + ".avif")
+            thumbnail_path = osp.join(os.getenv("APP_DATA"), thumbnail_urlpath)
             
-            os.makedirs(thumbnail_path, exist_ok=True);
+            os.makedirs(osp.dirname(thumbnail_path), exist_ok=True);
             
-            generate_thumbnail(savepath, osp.join(thumbnail_path, uuid + ".jpg"));
+            print("1")
+            print("Generating thumbnail for ", urlpath)
+            generate_thumbnail(osp.join(os.getenv("APP_DATA"), urlpath), thumbnail_path)
+
             print(f"At {time.time_ns()}")
             print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid + ".jpg")}");
             
             update_database_thumbnail(uuid, thumbnail_urlpath);
             print(f"Updated database entry for {uuid} with thumbnail path {thumbnail_urlpath}");
+        
         except:
             print("exception occured in worker callback")
         
         
     connection = wait_for(connect_to_rabbitmq, "RabbitMQ", timeout=20);
-    print("RabbitMQ connected successfully")
+    print("RabbitMQ connected successfully", flush=True)
     
-    channel = connection.channel();
+    channel = connection.channel()
 
-    channel.queue_declare(queue='image_processing_queue', durable=True);      
-    channel.basic_consume(queue='image_processing_queue',
+    channel.queue_declare(queue='thumbnail_generation_queue', durable=True);      
+    channel.basic_consume(queue='thumbnail_generation_queue',
                         auto_ack=True,
                         on_message_callback=workercallback)
 

@@ -2,12 +2,12 @@ package main
 
 import (
 	"MediaServer/serverutils"
-	"fmt"
+	// "fmt"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
+	// "github.com/joho/godotenv"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -24,13 +24,13 @@ func main() {
 	//Init
 	log.SetPrefix("Server:")
 	log.SetFlags(0b11110)
-	err := godotenv.Load()
+	// err := godotenv.Load()
 
-	if err != nil {
-		log.Fatal(fmt.Errorf(".env load fail %s", err))
-	} else {
-		log.Println(".env load successful")
-	}
+	// if err != nil {
+	// 	log.Fatal(fmt.Errorf(".env load fail %s", err))
+	// } else {
+	// 	log.Println(".env load successful")
+	// }
 
 	// Create a Gin router with default middleware (logger and recovery)
 	server := gin.Default()

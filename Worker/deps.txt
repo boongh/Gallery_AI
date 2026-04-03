@@ -8,3 +8,5 @@ pillow
 transformers
 psycopg[binary,pool]
 python-dotenv
+supervisor
+qdrant_client

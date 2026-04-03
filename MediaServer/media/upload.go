@@ -3,11 +3,12 @@ package mediahandler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"mime/multipart"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -35,14 +36,25 @@ func MediaUploadHandler(c *gin.Context) error {
 
 	q := serverutils.FailOnError(func() (amqp.Queue, error) {
 		return serverutils.Rabbitmqchannel.QueueDeclare(
-			"image_processing_queue", // name
-			true,                     // durable
-			false,                    // delete when unused
-			false,                    // exclusive
-			false,                    // no-wait
-			nil,                      // arguments
+			"thumbnail_generation_queue", // name
+			true,                         // durable
+			false,                        // delete when unused
+			false,                        // exclusive
+			false,                        // no-wait
+			nil,                          // arguments
 		)
-	}, "", "failed to initialize queue", context.Background())
+	}, "", "failed to initialize thumbnail queue", context.Background())
+
+	q_vector := serverutils.FailOnError(func() (amqp.Queue, error) {
+		return serverutils.Rabbitmqchannel.QueueDeclare(
+			"vector_generation_queue", // name
+			true,                      // durable
+			false,                     // delete when unused
+			false,                     // exclusive
+			false,                     // no-wait
+			nil,                       // arguments
+		)
+	}, "", "failed to initialize vector queue", context.Background())
 
 	form := serverutils.FailOnError(func() (*multipart.Form, error) {
 		return c.MultipartForm()
@@ -55,21 +67,26 @@ func MediaUploadHandler(c *gin.Context) error {
 	//{uuid}, {format}, {filepath}, {thumbnail path}, {status}, {created at}, {uploaded at}, {metadata}
 	entries := [][]any{}
 
+	message := []msg_type{}
+
 	for _, file := range files {
 
 		image_uuid := uuid.New().String()
 		extension := strings.Split(file.Header.Get("Content-Type"), "/")
 		fmt.Println(extension)
 		savefilename := image_uuid + "." + extension[len(extension)-1]
-		saveurl := "/media/originals/" + savefilename
+		saveurl := "media/originals/" + savefilename
 
-		savefilepath, fperr := filepath.Abs(os.Getenv("APP_DATA") + "/" + saveurl)
-		_ = fperr
+		savefilepath := path.Join(os.Getenv("APP_DATA"), saveurl)
 
-		saverr := c.SaveUploadedFile(file, savefilepath)
+		path := strings.TrimSpace(filepath.Join(" ", savefilepath))
 
-		if saverr != nil {
-			return errors.New("image saving fail")
+		fmt.Println("Saving file to:", path)
+
+		err := c.SaveUploadedFile(file, path, fs.FileMode.Perm(0o755))
+
+		if err != nil {
+			return fmt.Errorf("failed to save uploaded file: %s", err)
 		}
 
 		metadata := []byte(`{}`)
@@ -91,12 +108,27 @@ func MediaUploadHandler(c *gin.Context) error {
 			SAVEPATH:    savefilepath,
 		}
 
-		jsonpub, jsonerr := json.Marshal(p)
+		message = append(message, p)
+
+	}
+
+	_, err := serverutils.Postgrespool.CopyFrom(context.Background(), pgx.Identifier{"galleryindex", "images"}, []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}, pgx.CopyFromRows(entries))
+
+	if err != nil {
+		return fmt.Errorf("fail to insert into database %s", err)
+	}
+
+	for _, m := range message {
+
+		jsonpub, jsonerr := json.Marshal(m)
+
 		if jsonerr != nil {
 			log.Fatalf("failed to parse json %s", jsonerr)
 		}
 
 		fmt.Printf("parsed %v", jsonpub)
+
+		//thumbnail generation
 		chpuberr := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
 			"",     // exchange
 			q.Name, // routing key
@@ -112,12 +144,23 @@ func MediaUploadHandler(c *gin.Context) error {
 		} else {
 			log.Printf("[X] Sent %s RBMQ", jsonpub)
 		}
-	}
 
-	_, err := serverutils.Postgrespool.CopyFrom(context.Background(), pgx.Identifier{"galleryindex", "images"}, []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}, pgx.CopyFromRows(entries))
+		//vector generation
+		chpuberr_vec := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+			"",            // exchange
+			q_vector.Name, // routing key
+			false,         // mandatory
+			false,         // immediate
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        jsonpub,
+			})
 
-	if err != nil {
-		return fmt.Errorf("fail to insert into database %s", err)
+		if chpuberr_vec != nil {
+			return fmt.Errorf("fail to connect to publish to rabbitmq vector %s", chpuberr_vec)
+		} else {
+			log.Printf("[X] Sent (to Vector) %s RBMQ ", jsonpub)
+		}
 	}
 
 	return nil
