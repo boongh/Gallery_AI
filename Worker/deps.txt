@@ -1,8 +1,8 @@
 python-multipart
 pika
 uvicorn[standard]
+fastapi
 torch
-accelerate
 torchvision
 pillow
 transformers

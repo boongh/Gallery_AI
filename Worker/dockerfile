@@ -3,12 +3,10 @@ FROM python:3.13-slim AS builder
 # Install build dependencies
 WORKDIR /app
 
-RUN pip install --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 COPY deps.txt .
-RUN pip install -r deps.txt
-
-COPY supervisord.conf .
+RUN pip install --no-cache-dir -r deps.txt
 
 FROM python:3.13-slim AS runner
 

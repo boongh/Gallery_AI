@@ -140,6 +140,56 @@
                     }
                 }
             }
+        },
+        "/gms/media/query": {
+            "get": {
+                "description": "Query for by word or filter",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Query"
+                ],
+                "summary": "Query media",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Text to search for",
+                        "name": "text_query",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/gms/media/suggestions": {
+            "get": {
+                "description": "Query for media similar to a specified uuid",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Query"
+                ],
+                "summary": "Get media suggestions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "uuid of the root media",
+                        "name": "uuid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
         }
     },
     "definitions": {
