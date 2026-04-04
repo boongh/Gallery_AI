@@ -162,7 +162,7 @@ func QueryMediaRelated(c *gin.Context) error {
 func AdvancedMediaQuery(c *gin.Context) error {
 	var param MediaAdvancedQueryParam
 	var queryvectors []*qdrant.VectorInput
-	err := c.Bind(&param)
+	err := c.BindJSON(&param)
 	if err != nil {
 		c.Status(400)
 		return fmt.Errorf("Error binding JSON: %v", err)

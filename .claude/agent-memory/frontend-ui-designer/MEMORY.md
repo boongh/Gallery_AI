@@ -1,0 +1,1 @@
+- [Gallery AI frontend conventions](project_conventions.md) — dark theme, inline styles, Mantine components, grid layout, ImageData type, SidebarNav order
