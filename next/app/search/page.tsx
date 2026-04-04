@@ -1,25 +1,22 @@
 'use client';
 import React, { useState, useRef, useCallback } from 'react';
 import {
-  ActionIcon, Badge, Box, Button, Center, Group,
-  Loader, Stack, Text, TextInput,
+  ActionIcon, Badge, Box, Button, Center, Collapse, Group,
+  Loader, Select, Stack, Text, TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
 
 interface QueryResult {
   id: string;
   score: number;
-  payload: {
-    thumbnail_filepath?: { string_value: string };
-    filepath?: { string_value: string };
-  };
+  filepath?: string;
+  thumbnail_filepath?: string;
+  status?: string;
 }
 
 interface QueryResponse {
-  content: {
-    results: QueryResult[];
-  };
+  content: QueryResult[];
   next: {
     point_query: number[][];
     offset: number;
@@ -30,10 +27,10 @@ interface QueryResponse {
 function mapResult(result: QueryResult): ImageData {
   return {
     id: result.id,
-    filepath: result.payload?.filepath?.string_value ?? '',
-    thumbnail_filepath: result.payload?.thumbnail_filepath?.string_value ?? '',
+    filepath: result.filepath ?? '',
+    thumbnail_filepath: result.thumbnail_filepath ?? '',
     format: '',
-    status: '',
+    status: result.status ?? '',
     createdAt: new Date(0),
     uploadedAt: new Date(0),
     metaData: {},
@@ -50,6 +47,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
+  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
 
   const [lightboxImage, setLightboxImage] = useState<ImageData | null>(null);
   const [imageIndex, setImageIndex] = useState<Map<string, ImageData>>(new Map());
@@ -78,7 +77,7 @@ export default function SearchPage() {
         body: JSON.stringify({ text_query: query.trim(), limit: 20, offset: 0 }),
       });
       const data: QueryResponse = await res.json();
-      const mapped = (data.content?.results ?? []).map(mapResult);
+      const mapped = (data.content ?? []).map(mapResult);
       setResults(mapped);
       setResultCount(mapped.length);
       setNextBody(data.next ?? null);
@@ -100,7 +99,7 @@ export default function SearchPage() {
         body: JSON.stringify(nextBody),
       });
       const data: QueryResponse = await res.json();
-      const mapped = (data.content?.results ?? []).map(mapResult);
+      const mapped = (data.content ?? []).map(mapResult);
       setResults(prev => [...prev, ...mapped]);
       setResultCount(prev => (prev ?? 0) + mapped.length);
       setNextBody(data.next ?? null);
@@ -157,6 +156,16 @@ export default function SearchPage() {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </ActionIcon>
+          <ActionIcon
+            variant={filtersOpen ? 'light' : 'default'}
+            size="lg"
+            onClick={toggleFilters}
+            aria-label="Toggle filters"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/>
+            </svg>
+          </ActionIcon>
           {resultCount !== null && (
             <Badge variant="default" color="gray" radius="sm" size="md">
               {resultCount} result{resultCount !== 1 ? 's' : ''}
@@ -164,6 +173,49 @@ export default function SearchPage() {
           )}
         </Group>
       </Box>
+
+      {/* Advanced filters panel */}
+      <Collapse in={filtersOpen}>
+        <Box
+          style={{
+            margin: isMobile ? '0 8px' : '0 24px',
+            padding: '16px 20px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderTop: 'none',
+            borderRadius: '0 0 12px 12px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          {/* Placeholders — not yet wired to backend */}
+          <Select
+            disabled
+            placeholder="Date range (soon)"
+            data={['Last 7 days', 'Last 30 days', 'Last year']}
+            style={{ flex: '1 1 160px' }}
+          />
+          <Select
+            disabled
+            placeholder="Format (soon)"
+            data={['JPEG', 'PNG', 'HEIC', 'RAW']}
+            style={{ flex: '1 1 160px' }}
+          />
+          <Select
+            disabled
+            placeholder="Collection (soon)"
+            data={[]}
+            style={{ flex: '1 1 160px' }}
+          />
+          <Select
+            disabled
+            placeholder="Sort by (soon)"
+            data={['Relevance', 'Date uploaded', 'Date created']}
+            style={{ flex: '1 1 160px' }}
+          />
+        </Box>
+      </Collapse>
 
       {/* Results grid */}
       <Box p={isMobile ? 12 : 24}>

@@ -16,6 +16,10 @@ export default function Home() {
   const imageIndexRef = useRef<Map<string, ImageData>>(new Map());
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ImageData[] | null>(null);
+  const [searchNextBody, setSearchNextBody] = useState<object | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   const [nextUrl, setNextUrl] = useState<string | null>(
     '/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at'
   );
@@ -35,6 +39,18 @@ export default function Home() {
       uploadedAt: new Date(img.uploaded_at),
       createdAt: new Date(img.created_at),
       metaData: img.metadata || {},
+    }));
+
+  const parseSearchResults = (raw: any[]): ImageData[] =>
+    raw.map(r => ({
+      id: r.id,
+      filepath: r.filepath ?? '',
+      thumbnail_filepath: r.thumbnail_filepath ?? '',
+      status: r.status ?? '',
+      format: '',
+      uploadedAt: new Date(0),
+      createdAt: new Date(0),
+      metaData: {},
     }));
 
   const loadImages = useCallback(async (url: string, append = false) => {
@@ -60,17 +76,82 @@ export default function Home() {
     loadImages('/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at');
   }, [loadImages]);
 
+  async function handleSearch() {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      setSearchNextBody(null);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const res = await fetch('/gms/media/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text_query: searchQuery, limit: 40 }),
+      }).then(r => r.json());
+      const results = parseSearchResults(res.content ?? []);
+      setSearchResults(results);
+      setSearchNextBody(res.next ?? null);
+      setImageIndex(prev => {
+        const next = new Map(prev);
+        results.forEach(img => next.set(img.id, img));
+        imageIndexRef.current = next;
+        return next;
+      });
+    } catch (err) {
+      console.error('Search error:', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  async function handleSearchLoadMore() {
+    if (!searchNextBody) return;
+    setSearchLoading(true);
+    try {
+      const res = await fetch('/gms/media/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(searchNextBody),
+      }).then(r => r.json());
+      const more = parseSearchResults(res.content ?? []);
+      setSearchResults(prev => [...(prev ?? []), ...more]);
+      setSearchNextBody(res.next ?? null);
+      setImageIndex(prev => {
+        const next = new Map(prev);
+        more.forEach(img => next.set(img.id, img));
+        imageIndexRef.current = next;
+        return next;
+      });
+    } catch (err) {
+      console.error('Search load more error:', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  function handleSearchClear() {
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearchNextBody(null);
+  }
+
   async function handleUpload() {
     if (!uploadFiles?.length) return;
     const total = uploadFiles.length;
     setUploadProgress({ current: 0, total });
+    const uploadStart = performance.now();
+    console.log(`[Upload] Starting upload of ${total} file(s)`);
     try {
       for (let i = 0; i < total; i++) {
         setUploadProgress({ current: i + 1, total });
+        const fileStart = performance.now();
         const formData = new FormData();
         formData.append('files', uploadFiles[i]);
         await fetch('/gms/media', { method: 'POST', body: formData });
+        console.log(`[Upload] File ${i + 1}/${total} (${uploadFiles[i].name}) — ${(performance.now() - fileStart).toFixed(0)}ms`);
       }
+      console.log(`[Upload] All done — total ${(performance.now() - uploadStart).toFixed(0)}ms`);
       closeUpload();
       setUploadFiles(undefined);
       setLoading(true);
@@ -82,11 +163,8 @@ export default function Home() {
     }
   }
 
-  const filteredImages = images.filter(img =>
-    searchQuery === '' ||
-    img.filepath.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
+  const isSearchActive = searchResults !== null;
+  const displayedImages = isSearchActive ? searchResults : images;
   const thumbSrc = (img: ImageData) => img.thumbnail_filepath || img.filepath;
 
   return (
@@ -109,12 +187,27 @@ export default function Home() {
             placeholder="Search images…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            rightSection={
+              isSearchActive ? (
+                <ActionIcon variant="subtle" size="sm" onClick={handleSearchClear} aria-label="Clear search">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </ActionIcon>
+              ) : null
+            }
             leftSection={
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
             }
           />
+          <ActionIcon variant="default" size="lg" onClick={handleSearch} loading={searchLoading} aria-label="Search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+          </ActionIcon>
           {isMobile ? (
             <ActionIcon variant="default" size="lg" onClick={toggleUpload} aria-label="Upload">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -175,11 +268,15 @@ export default function Home() {
 
       {/* Gallery grid */}
       <Box p={isMobile ? 12 : 24}>
-        {loading ? (
+        {loading && !isSearchActive ? (
           <Center h={200}>
             <Loader />
           </Center>
-        ) : filteredImages.length === 0 ? (
+        ) : searchLoading && displayedImages.length === 0 ? (
+          <Center h={200}>
+            <Loader />
+          </Center>
+        ) : displayedImages.length === 0 ? (
           <Center h={200}>
             <Stack align="center" gap="xs">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity={0.3} color="var(--mantine-color-dimmed)">
@@ -187,7 +284,7 @@ export default function Home() {
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
               <Text size="sm" c="dimmed">
-                {searchQuery ? 'No images match your search' : 'No images yet'}
+                {isSearchActive ? 'No results for that search' : 'No images yet'}
               </Text>
             </Stack>
           </Center>
@@ -199,7 +296,7 @@ export default function Home() {
               gap: isMobile ? 6 : 8,
             }}
           >
-            {filteredImages.map(image => (
+            {displayedImages.map(image => (
               <Box
                 key={image.id}
                 onClick={() => setLightboxImage(image)}
@@ -230,9 +327,17 @@ export default function Home() {
           </Box>
         )}
 
-        {nextUrl && !loading && (
+        {!isSearchActive && nextUrl && !loading && (
           <Center mt={32}>
             <Button variant="default" onClick={() => nextUrl && loadImages(nextUrl, true)}>
+              Load more
+            </Button>
+          </Center>
+        )}
+
+        {isSearchActive && searchNextBody && (
+          <Center mt={32}>
+            <Button variant="default" loading={searchLoading} onClick={handleSearchLoadMore}>
               Load more
             </Button>
           </Center>

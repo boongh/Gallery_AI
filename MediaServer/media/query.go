@@ -50,13 +50,40 @@ type MediaAdvancedQueryResponse struct {
 		Vector  [][]float32 `json:"vector"`
 	} `json:"content"`
 }
-type AdvancedQueryContent struct {
-	Results []map[string]interface{} `json:"results"`
-}
 
 type AdvancedQueryPaginatedResponse struct {
-	Content AdvancedQueryContent    `json:"content"`
-	Next    MediaAdvancedQueryParam `json:"next,omitempty"`
+	Content []map[string]any         `json:"content"`
+	elapsed int64                    `json:"elapsed_time"`
+	Next    *MediaAdvancedQueryParam `json:"next,omitempty"`
+}
+
+func unwrapPayloadValue(v *qdrant.Value) interface{} {
+	switch k := v.Kind.(type) {
+	case *qdrant.Value_StringValue:
+		return k.StringValue
+	case *qdrant.Value_BoolValue:
+		return k.BoolValue
+	case *qdrant.Value_NullValue:
+		return nil
+	case *qdrant.Value_ListValue:
+		list := make([]interface{}, len(k.ListValue.Values))
+		for i, item := range k.ListValue.Values {
+			list[i] = unwrapPayloadValue(item)
+		}
+		return list
+	case *qdrant.Value_DoubleValue:
+		return k.DoubleValue
+	case *qdrant.Value_IntegerValue:
+		return k.IntegerValue
+	case *qdrant.Value_StructValue:
+		m := make(map[string]interface{}, len(k.StructValue.Fields))
+		for key, val := range k.StructValue.Fields {
+			m[key] = unwrapPayloadValue(val)
+		}
+		return m
+	default:
+		return nil
+	}
 }
 
 func QueryMedia(c *gin.Context) error {
@@ -160,6 +187,7 @@ func QueryMediaRelated(c *gin.Context) error {
 }
 
 func AdvancedMediaQuery(c *gin.Context) error {
+	var start = time.Now()
 	var param MediaAdvancedQueryParam
 	var queryvectors []*qdrant.VectorInput
 	err := c.BindJSON(&param)
@@ -225,7 +253,6 @@ func AdvancedMediaQuery(c *gin.Context) error {
 		}
 		vectorembeddings = responseobj.Content.Vector
 	}
-
 	points, err := serverutils.Qdrantclient.Query(context.Background(), &qdrant.QueryPoints{
 		CollectionName: "media",
 		Query: qdrant.NewQueryRecommend(&qdrant.RecommendInput{
@@ -235,37 +262,45 @@ func AdvancedMediaQuery(c *gin.Context) error {
 			// },
 		}),
 		// Query:          qdrant.NewQueryNearest(qdrant.NewVectorInput(responseobj.Content.Vector...)),
-		Offset: &param.Offset,
-
-		Limit: &param.Limit,
+		Offset:      &param.Offset,
+		Limit:       &param.Limit,
+		WithPayload: qdrant.NewWithPayload(true),
 	})
 
 	if err != nil {
 		return fmt.Errorf("Qdrant fail: %v", err)
 	}
 
-	results := make([]map[string]interface{}, len(points))
+	results := make([]map[string]any, len(points))
 	for i, p := range points {
-		results[i] = map[string]interface{}{
-			"id":      p.Id.GetUuid(),
-			"score":   p.Score,
-			"payload": p.Payload,
+		result := make(map[string]any, len(p.Payload)+2)
+		for k, v := range p.Payload {
+			result[k] = unwrapPayloadValue(v)
 		}
+		result["score"] = p.Score
+		result["id"] = p.Id.GetUuid()
+		results[i] = result
 	}
 
-	var nextQuery MediaAdvancedQueryParam = param
+	fmt.Println(results)
+
+	print(len(points))
+	print(param.Limit)
+	nextquerrytemp := param
+	nextQuery := (*MediaAdvancedQueryParam)(nil)
 	if uint64(len(points)) == param.Limit {
-		nextQuery = MediaAdvancedQueryParam{
-			PointQuery: vectorembeddings,
-			Offset:     param.Offset + param.Limit,
-		}
+		nextQuery = &nextquerrytemp
+		nextquerrytemp.Offset = param.Offset + param.Limit
+		nextquerrytemp.PointQuery = vectorembeddings
 	}
 
+	fmt.Println(nextQuery)
+
+	var elapsed = time.Since(start).Milliseconds()
 	c.JSON(200, AdvancedQueryPaginatedResponse{
-		Content: AdvancedQueryContent{
-			Results: results,
-		},
-		Next: nextQuery,
+		Content: results,
+		elapsed: elapsed, // placeholder for elapsed time
+		Next:    nextQuery,
 	})
 
 	return nil
