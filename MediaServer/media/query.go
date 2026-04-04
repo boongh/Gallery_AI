@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/qdrant/go-client/qdrant"
 )
 
 var ValidMediaAttributes = []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}
@@ -21,6 +22,9 @@ type MediaQueryParam struct {
 	Want   string `form:"want"`
 }
 
+type SuggestionQueryParam struct {
+	UUID string `form:"uuid"`
+}
 type PaginatedResponse struct {
 	Content []map[string]interface{} `json:"content"`
 	Next    string                   `json:"next,omitempty"`
@@ -87,7 +91,7 @@ func QueryMedia(c *gin.Context) error {
 
 	var nextURL string
 	if len(qresult) == param.Limit {
-		nextURL = fmt.Sprintf("/media?offset=%d&limit=%d&want=%s", param.Offset+param.Limit, param.Limit, param.Want)
+		nextURL = fmt.Sprintf("/gms/media?offset=%d&limit=%d&want=%s", param.Offset+param.Limit, param.Limit, param.Want)
 	}
 
 	c.JSON(200, PaginatedResponse{
@@ -109,11 +113,40 @@ type MediaAdvancedQueryParam struct {
 	TextSemanticSearch string `json:"text_sem_search"`
 }
 
+func QueryMediaRelated(c *gin.Context) error {
+	var param SuggestionQueryParam
+
+	if c.BindQuery(&param) != nil {
+		c.Status(400)
+		return nil
+	}
+	scorethreshold := float32(0.5)
+	limit := uint64(20)
+	points, err := serverutils.Qdrantclient.Query(context.Background(), &qdrant.QueryPoints{
+		CollectionName: "media",
+		Query:          qdrant.NewQueryID(qdrant.NewID(param.UUID)),
+		ScoreThreshold: &scorethreshold,
+		Limit:          &limit,
+	})
+
+	if err != nil {
+		fmt.Println("Error query db")
+		panic(err)
+	}
+
+	fmt.Println("Query results: ", points)
+
+	c.JSON(200, points)
+
+	return nil
+}
+
 func AdvancedMediaQuery(c *gin.Context) error {
 	var param MediaAdvancedQueryParam
 	if c.BindJSON(&param) != nil {
 		c.Status(400)
 		return nil
 	}
+
 	return errors.New("Function not defined")
 }

@@ -42,6 +42,21 @@ func MediaQuery(c *gin.Context) {
 	}
 }
 
+// @Summary		Get media suggestions
+// @Description	Query for media similar to a specified uuid
+// @Tags			Query
+// @Param			uuid query int false "uuid of the root media"
+// @Produce		application/json
+// @Success		200
+// @Router			/gms/media/suggestions [GET]
+func MediaQueryRelated(c *gin.Context) {
+	err := mediahandler.QueryMediaRelated(c)
+	if err != nil {
+		log.Println("Media Query Fail:", err)
+		c.Status(500)
+	}
+}
+
 // @Summary		Create a new collection
 // @Description	Create a new collection entry with a specified name and description
 // @Tags			Creation

@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/qdrant/go-client/qdrant"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 var Postgrespool *pgxpool.Pool
 var Rabbitmqconnection *amqp.Connection
 var Rabbitmqchannel *amqp.Channel
+var Qdrantclient *qdrant.Client
 
 func PostgresConnect() *pgxpool.Pool {
 	return FailOnError(func() (*pgxpool.Pool, error) {
@@ -60,4 +63,17 @@ func RabbitMQConnect(queue string) (*amqp.Connection, *amqp.Channel, amqp.Queue)
 	Rabbitmqchannel = channel
 
 	return conn, channel, q
+}
+
+func QdrantConnect() *qdrant.Client {
+	client := FailOnError(func() (*qdrant.Client, error) {
+		port, _ := strconv.Atoi(os.Getenv("QDRANTPORT"))
+		return qdrant.NewClient(&qdrant.Config{
+			Host: os.Getenv("QDRANTHOST"),
+			Port: port,
+		})
+	}, "", "failed to connect to qdrant", context.Background())
+
+	Qdrantclient = client
+	return client
 }

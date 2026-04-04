@@ -27,12 +27,13 @@ def main():
         print(osp.join(os.getenv("APP_DATA"), image_path))
 
         try:
-            from PIL import Image
+            from PIL import Image, ImageOps
 
             image = Image.open(image_path)
 
             print("4")
             image.thumbnail((512, 512))
+            image = ImageOps.exif_transpose(image)  # Correct orientation based on EXIF data
             image.save(thumbnail_path)
 
         except Exception as e:

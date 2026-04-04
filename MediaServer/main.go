@@ -33,15 +33,18 @@ func main() {
 	// }
 
 	// Create a Gin router with default middleware (logger and recovery)
-	server := gin.Default()
-	server.MaxMultipartMemory = (8 << 20)
 
 	pgconnection := serverutils.PostgresConnect()
 	rbmqconnect, rbmqchannel, _ := serverutils.RabbitMQConnect("")
 
+	serverutils.QdrantConnect()
+
 	defer pgconnection.Close()
 	defer rbmqconnect.Close()
 	defer rbmqchannel.Close()
+
+	server := gin.Default()
+	server.MaxMultipartMemory = (8 << 20)
 
 	//End init
 
@@ -58,6 +61,7 @@ func main() {
 		uploadgroup := server.Group("/media")
 		uploadgroup.POST("", mediaupload)
 		uploadgroup.GET("", MediaQuery)
+		uploadgroup.GET("/suggestions", MediaQueryRelated)
 	}
 
 	{
