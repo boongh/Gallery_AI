@@ -24,8 +24,6 @@ services:
     depends_on:
       messagequeue:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
       
 
   worker:
@@ -39,6 +37,9 @@ services:
       POSTGRES_USER: gallery
       POSTGRES_PASSWORD: gallery
       POSTGRES_DB: gallerydb
+      QDRANTHOST: qdrantdb
+      QDRANTPORT: 6333
+      QDRANTCOLLECTION: media
 
     volumes:
       - ./data:/app/data
@@ -66,6 +67,21 @@ services:
 
   qdrantdb:
     image: qdrant/qdrant
+
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC API
+
+    volumes:
+      - qdrant_storage:/qdrant/storage
+      - ./data/qdrant/snapshots:/qdrant/snapshots
+
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+
+    restart: always
+
 
   postgres:
     image: postgres:alpine
@@ -97,6 +113,12 @@ services:
     volumes:
       - ./nginx/conf/nginx.config:/etc/nginx/nginx.conf:ro
       - ./data:/data
+    depends_on:
+      mediaserver:
+        condition: service_started
+      next-app:
+        condition: service_started
+    restart: on-failure
 
   mediaserver:
     image: media-server
@@ -105,7 +127,9 @@ services:
     environment:
       EMBEDAPIURL: embedapi
       RABBITMQ_HOST: messagequeue
-      QDRANTDB: qdrantdb
+      QDRANTHOST: qdrantdb
+      QDRANTPORT: 6334
+      QDRANTCOLLECTION: media
       APP_DATA: data
       PGHOST: postgres
       PGUSER: gallery
@@ -119,6 +143,14 @@ services:
       - 8080:8080
     volumes:
       - ./data:/data
+    depends_on:
+      messagequeue:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      qdrantdb:
+        condition: service_started
+    restart: on-failure
 
 
 volumes:

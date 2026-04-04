@@ -42,7 +42,7 @@ export default function RootLayout({
         <ModalsProvider>
             <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: '#0d0d0d' }}>
               <SidebarNav />
-              <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <div style={{ flex: 1, minWidth: 0, overflowX: 'clip' }}>
                 {children}
               </div>
             </div>
