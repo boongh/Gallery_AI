@@ -123,34 +123,35 @@ package backends{
     
     component "Workers" as EmbedWorker{
         [Embed queue] --> [Read files]
-        
-        'Gen thumbnail and save
+
+        'Gen thumbnail and save [IMPLEMENTED]
         [Read files] --> [Generate thumbnail]
         [Generate thumbnail] --> [thumbnails]
-        [Generate thumbnail] --> [Image Index] : Check if thumbnail \nalready exist
-        
-        'Semantic Search worker
+        [Generate thumbnail] --> [Image Index] : Update thumbnail path
+
+        'Semantic Search worker [IMPLEMENTED]
         [Read files] --> [Embed image]
-        [Embed image] --> [Image Index]
+        [Embed image] --> [Image Index] : Update status
         [Embed image] --> [Vector Image Index]
-        
-        'Face search worker
+
+        'Face search worker [PLANNED]
         [Read files] --> [Face Detection]
         [Face Detection] --> [Get all face embeddings]
         [Get all face embeddings] --> [Face Instance Embedding] : Writes new face embeddings found
-        
+
         [Get all face embeddings] --> [For each face]
         [For each face] --> [Identity Entry] : Look up closest match to the face
         [For each face] --> [Upsert new face] : If a look up can't \nfind a close enough match, \nupsert new
         [Upsert new face] --> [Identity Entry]
-        
-        
+
+
     }
     
     component EmbedAPI{
         port text as textembedapi
-        port image as imageembedapi
         textembedapi <-> [Embed text]
+        ' image embed endpoint [PLANNED]
+        port image as imageembedapi
     }
     
     component "Redis Pub Sub" {
@@ -221,15 +222,22 @@ package backends{
         }
         
         package AdvancedQueryPipeline{
+            ' [IMPLEMENTED] text query + point_query pagination
             [/media/query] as queryEndpoint
-            mediaendpoint --> queryEndpoint
-            queryEndpoint --> (Check Text Hash)
+
+            queryEndpoint --> [Use point_query directly] : If point_query in body \n(pagination, no re-embed)
+            queryEndpoint --> [Get new text embed] : If text_query in body
+            [Get new text embed] <-> textembedapi
+            [Use point_query directly] --> [Query Qdrant recommend]
+            [Get new text embed] --> [Query Qdrant recommend]
+            [Query Qdrant recommend] --> [Vector Image Index]
+
+            ' Returns embedding in response so client can paginate without re-embedding
+            [Query Qdrant recommend] --> [Return results + embedding]
+
+            ' [PLANNED] text query caching
             (Check Text Hash) --> [Text Hash] : Fetch past queries
             (Check Text Hash) --> [Get new text embed] : Novel Query
-            [Get new text embed] <-> textembedapi
-            [Get new text embed] <-- [Vector Image Index] : New Embedding Query
-            [Get new text embed] --> [Get image indices]
-            [Get image indices] --> [Image Index]
 
         }
     
@@ -281,18 +289,23 @@ package backends{
 
 
 component Next{
-    [Frontend]
+    [Gallery Page /] as gallerypage
+    [Search Page /search] as searchpage
+    [Collections Page /collection] as collectionpage
 
-    [Frontend] <-> statusws
+    ' [IMPLEMENTED]
+    gallerypage <--> mediaendpoint : GET paginated list \nPOST upload
+    searchpage --> queryEndpoint : POST text_query or point_query
+    collectionpage <-> [/collection]
 
-    [Frontend] <--> mediaendpoint : Form data image : Repeated image warning
-    [Frontend] <-> [/collection] : Search by collection
+    ' [PLANNED]
+    [Frontend] <-> statusws : Realtime metrics
 }
 
 component NGINX{
-    [nginx] --> [GMS] : Media Server API endpoints with /gms (go media server)
-    
-    [nginx] --> [Frontend] : Next frontend (default)
+    [nginx] --> [GMS] : /gms/* → Go media server (prefix stripped)
+    [nginx] --> [Frontend] : /* → Next frontend (default)
+    [nginx] --> [Disk] : /media/* → served directly from /data volume
 }
 
 (user) --> [nginx]
