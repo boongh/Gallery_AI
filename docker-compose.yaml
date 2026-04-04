@@ -26,8 +26,9 @@ services:
         condition: service_healthy
       
 
-  worker:
-    image: gallery--worker
+  python-worker:
+    image: gallery--python-worker
+    
     build: ./Worker
 
     environment:
@@ -40,9 +41,13 @@ services:
       QDRANTHOST: qdrantdb
       QDRANTPORT: 6333
       QDRANTCOLLECTION: media
+      AMD_VISIBLE_DEVICES: all
 
     volumes:
       - ./data:/app/data
+
+    ports:
+      - 8001:8001
 
     depends_on:
       messagequeue:

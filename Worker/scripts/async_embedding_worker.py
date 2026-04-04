@@ -2,40 +2,16 @@ from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 from utils.u_rabbitmq import connect_to_rabbitmq;
 from utils.u_waitfor import wait_for;
+from utils.u_embedder_model import embed_image;
 import torch
 import json;
 import os;
 
 from qdrant_client import QdrantClient, models
 
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-model.eval()
-
 qdrant_url = f"http://{os.getenv('QDRANTHOST')}:{os.getenv('QDRANTPORT')}"
 print("Connecting to Qdrant at ", qdrant_url)
 client = QdrantClient(url=qdrant_url)
-
-def embed_image(image_path: str) -> list[float]:
-    image = Image.open(image_path).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt")
-    print("Processing image for embedding...")
-    with torch.no_grad():
-        print("1")
-        output = model.get_image_features(**inputs, return_dict=True)
-
-        if hasattr(output, 'pooler_output'):
-            print("Output has pooler_output")
-            vector = output.pooler_output
-        else:
-            print("Output does not have pooler_output, using last_hidden_state")
-            vector = output
-        print(vector)
-        print(vector.norm(dim=-1, keepdim=True))
-        vector = vector / vector.norm(dim=-1, keepdim=True)  # normalize
-        print("3")
-
-    return vector.squeeze().tolist()
 
 def embed_image_callback(ch, method, properties, body):
     try:
@@ -49,7 +25,7 @@ def embed_image_callback(ch, method, properties, body):
         uuid = jsonbody['uuid'];
 
         # Generate thumbnail
-        vector = embed_image(savepath)
+        vector =  embed_image(savepath)
         if vector is None:
             print("Failed to generate vector for ", savepath)
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
@@ -57,6 +33,7 @@ def embed_image_callback(ch, method, properties, body):
 
         if not client.collection_exists(os.getenv('QDRANTCOLLECTION')):
             print(f"Qdrant collection '{os.getenv('QDRANTCOLLECTION')}' does not exist. An error might have occured. Please restart the worker.")
+            
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         else:
             client.upsert(

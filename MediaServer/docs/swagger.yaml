@@ -101,4 +101,36 @@ paths:
       summary: Upload images
       tags:
       - Creation
+  /gms/media/query:
+    get:
+      description: Query for by word or filter
+      parameters:
+      - description: Text to search for
+        in: query
+        name: text_query
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+      summary: Query media
+      tags:
+      - Query
+  /gms/media/suggestions:
+    get:
+      description: Query for media similar to a specified uuid
+      parameters:
+      - description: uuid of the root media
+        in: query
+        name: uuid
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+      summary: Get media suggestions
+      tags:
+      - Query
 swagger: "2.0"

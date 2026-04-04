@@ -15,7 +15,7 @@ import (
 // @Produce		text/plain
 // @Success		200
 // @Router			/gms/media [POST]
-func mediaupload(c *gin.Context) {
+func MediaUpload(c *gin.Context) {
 	err := mediahandler.MediaUploadHandler(c)
 	if err != nil {
 		log.Println("Image Upload Fail:", err)
@@ -42,6 +42,21 @@ func MediaQuery(c *gin.Context) {
 	}
 }
 
+// @Summary		Query media
+// @Description	Query for by word or filter
+// @Tags			Query
+// @Param			text_query query string false "Text to search for"
+// @Produce		application/json
+// @Success		200
+// @Router			/gms/media/query [POST]
+func MediaAdvancedQuery(c *gin.Context) {
+	err := mediahandler.AdvancedMediaQuery(c)
+	if err != nil {
+		log.Println("Advanced Media Query Fail:", err)
+		c.Status(500)
+	}
+}
+
 // @Summary		Get media suggestions
 // @Description	Query for media similar to a specified uuid
 // @Tags			Query
@@ -50,9 +65,25 @@ func MediaQuery(c *gin.Context) {
 // @Success		200
 // @Router			/gms/media/suggestions [GET]
 func MediaQueryRelated(c *gin.Context) {
+
 	err := mediahandler.QueryMediaRelated(c)
 	if err != nil {
 		log.Println("Media Query Fail:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Create a new collection
+// @Description	Create a new collection entry with a specified name and description
+// @Tags			Creation
+// @Param			collection	body	collection.NewCollection	true	"The collection data to create"
+// @Produce		application/json
+// @Success		200	{object}	collection.NewCollection	//	Example	success	response
+// @Router			/gms/collection [POST]
+func MediaQuerySearch(c *gin.Context) {
+	err := collection.NewCollectionHandler(c)
+	if err != nil {
+		log.Println("Collection Creation Failed:", err)
 		c.Status(500)
 	}
 }

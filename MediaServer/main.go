@@ -59,8 +59,11 @@ func main() {
 	//Upload
 	{
 		uploadgroup := server.Group("/media")
-		uploadgroup.POST("", mediaupload)
+		uploadgroup.POST("", MediaUpload)
 		uploadgroup.GET("", MediaQuery)
+
+		//Get to test python easier first
+		uploadgroup.POST("/query", MediaAdvancedQuery)
 		uploadgroup.GET("/suggestions", MediaQueryRelated)
 	}
 

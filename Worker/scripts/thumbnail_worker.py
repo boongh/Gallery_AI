@@ -1,3 +1,5 @@
+import uuid
+
 import pika;
 import os;
 import sys;
@@ -41,27 +43,34 @@ def main():
             print(traceback.format_exc(), flush=True)
 
         
-    def update_database_thumbnail(uuid, thumbnail_urlpath):
-        schema = "galleryindex"
-        table = "images"
-        conn = wait_for(connect_to_postgres, "PostgreSQL")
+    def update_database_thumbnail(uuid, thumbnail_urlpath) -> bool:
+        try:
+            schema = "galleryindex"
+            table = "images"
+            conn = wait_for(connect_to_postgres, "PostgreSQL")
+            
+            # Update database entry
+            cur = conn.cursor()
+
+            query = sql.SQL("""
+                UPDATE {schema}.{table}
+                SET thumbnail_filepath = %s
+                WHERE uuid = %s;
+            """).format(
+                schema=sql.Identifier(schema),
+                table=sql.Identifier(table)
+            )
+
+            cur.execute(query, (thumbnail_urlpath, uuid))
+
+            conn.commit()
+            conn.close()
+            return True
+        except:
+            print("Exception occured while updating database thumbnail path for uuid ", uuid, ": ", sys.exc_info()[0], flush=True)
+            print(traceback.format_exc(), flush=True)
+            return False
         
-        # Update database entry
-        cur = conn.cursor()
-
-        query = sql.SQL("""
-            UPDATE {schema}.{table}
-            SET thumbnail_filepath = %s
-            WHERE uuid = %s;
-        """).format(
-            schema=sql.Identifier(schema),
-            table=sql.Identifier(table)
-        )
-
-        cur.execute(query, (thumbnail_urlpath, uuid))
-
-        conn.commit()
-        conn.close()
         
     def workercallback(ch, method, properties, body):
         try:
@@ -89,8 +98,13 @@ def main():
             print(f"At {time.time_ns()}")
             print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid + ".jpg")}");
             
-            update_database_thumbnail(uuid, thumbnail_urlpath);
-            print(f"Updated database entry for {uuid} with thumbnail path {thumbnail_urlpath}");
+            if not update_database_thumbnail(uuid, thumbnail_urlpath):
+                print("Failed to update database thumbnail path for uuid ", uuid)
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                return
+            else:
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                print(f"Updated database entry for {uuid} with thumbnail path {thumbnail_urlpath}");
         
         except:
             print("exception occured in worker callback")
@@ -103,7 +117,7 @@ def main():
 
     channel.queue_declare(queue='thumbnail_generation_queue', durable=True);      
     channel.basic_consume(queue='thumbnail_generation_queue',
-                        auto_ack=True,
+                        auto_ack=False,
                         on_message_callback=workercallback)
 
     print('Waiting for messages. To exit press CTRL+C');
