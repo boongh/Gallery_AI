@@ -23,9 +23,10 @@ import (
 )
 
 type msg_type struct {
-	UUID        string `json:"uuid"`
-	FILEURLPATH string `json:"fileurlpath"`
-	SAVEPATH    string `json:"savepath"`
+	UUID             string `json:"uuid"`
+	FILEURLPATH      string `json:"fileurlpath"`
+	SAVEPATH         string `json:"savepath"`
+	THUMBNAILURLPATH string `json:"thumbnailurlpath"`
 }
 
 type Server struct {
@@ -34,7 +35,7 @@ type Server struct {
 
 func MediaUploadHandler(c *gin.Context) error {
 
-	q := serverutils.FailOnError(func() (amqp.Queue, error) {
+	q_thumbnail := serverutils.FailOnError(func() (amqp.Queue, error) {
 		return serverutils.Rabbitmqchannel.QueueDeclare(
 			"thumbnail_generation_queue", // name
 			true,                         // durable
@@ -76,6 +77,7 @@ func MediaUploadHandler(c *gin.Context) error {
 		fmt.Println(extension)
 		savefilename := image_uuid + "." + extension[len(extension)-1]
 		saveurl := "media/originals/" + savefilename
+		thumbnailsaveurl := "media/thumbnails/" + image_uuid + ".avif"
 
 		savefilepath := path.Join(os.Getenv("APP_DATA"), saveurl)
 
@@ -103,9 +105,14 @@ func MediaUploadHandler(c *gin.Context) error {
 		})
 
 		var p msg_type = msg_type{
-			UUID:        image_uuid,
-			FILEURLPATH: saveurl,
-			SAVEPATH:    savefilepath,
+			UUID:             image_uuid,
+			FILEURLPATH:      saveurl,
+			SAVEPATH:         savefilepath,
+			THUMBNAILURLPATH: thumbnailsaveurl,
+			// STATUS: "pending thumbnail",
+			// CREATEDAT: time.Now(),
+			// UPLOADEDAT: time.Now(),
+			// METADATA: metadata,
 		}
 
 		message = append(message, p)
@@ -130,10 +137,10 @@ func MediaUploadHandler(c *gin.Context) error {
 
 		//thumbnail generation
 		chpuberr := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
-			"",     // exchange
-			q.Name, // routing key
-			false,  // mandatory
-			false,  // immediate
+			"",               // exchange
+			q_thumbnail.Name, // routing key
+			false,            // mandatory
+			false,            // immediate
 			amqp.Publishing{
 				ContentType: "application/json",
 				Body:        jsonpub,

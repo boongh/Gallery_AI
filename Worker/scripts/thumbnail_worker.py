@@ -86,7 +86,7 @@ def main():
             # Generate thumbnail
             categorypath = "media";
             
-            thumbnail_urlpath = osp.join(categorypath, "thumbnails", uuid + ".avif")
+            thumbnail_urlpath = jsonbody['thumbnailurlpath'];
             thumbnail_path = osp.join(os.getenv("APP_DATA"), thumbnail_urlpath)
             
             os.makedirs(osp.dirname(thumbnail_path), exist_ok=True);

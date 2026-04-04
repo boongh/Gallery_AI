@@ -42,7 +42,10 @@ def embed_image_callback(ch, method, properties, body):
                     models.PointStruct(
                         id=uuid,
                         vector=vector,
-                        payload={"fileurlpath": urlpath}
+                        payload={
+                            "filepath": urlpath,
+                            "thumbnail_filepath": jsonbody['thumbnailurlpath'],
+                            }
                     )
                 ]
             )
