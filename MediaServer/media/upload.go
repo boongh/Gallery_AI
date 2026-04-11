@@ -9,7 +9,6 @@ import (
 	"mime/multipart"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,17 +22,48 @@ import (
 )
 
 type msg_type struct {
-	UUID             string `json:"uuid"`
-	FILEURLPATH      string `json:"fileurlpath"`
-	SAVEPATH         string `json:"savepath"`
-	THUMBNAILURLPATH string `json:"thumbnailurlpath"`
+	UUID              string `json:"uuid"`
+	FILEURLPATH       string `json:"fileurlpath"`
+	SAVEPATH          string `json:"savepath"`
+	THUMBNAILSAVEPATH string `json:"thumbnailsavepath"`
+	THUMBNAILURLPATH  string `json:"thumbnailurlpath"`
+	COLLECTIONID      string `json:"collection_id"`
 }
 
 type Server struct {
 	Pool *pgxpool.Pool
 }
 
-func MediaUploadHandler(c *gin.Context) error {
+func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter FakeImagePostgresInserter) error {
+
+	userUUID, exist := c.Get("userUUID")
+	collectionID := c.Param("collection_id")
+
+	if !exist {
+		c.Status(401)
+		return fmt.Errorf("Unauthorized: User not authenticated")
+	}
+
+	query := `SELECT uuid FROM collections.collection_data
+				WHERE uuid = $1 AND owner_uuid = $2`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rows, err := querier.Query(ctx, query, collectionID, userUUID)
+
+	println(rows.Values())
+
+	if err != nil {
+		log.Fatalf("query fails %s", err)
+	}
+
+	defer rows.Close()
+
+	if rows.Next() {
+		c.Status(404)
+		return fmt.Errorf("No collection found for user %s", userUUID)
+	}
 
 	q_thumbnail := serverutils.FailOnError(func() (amqp.Queue, error) {
 		return serverutils.Rabbitmqchannel.QueueDeclare(
@@ -61,12 +91,14 @@ func MediaUploadHandler(c *gin.Context) error {
 		return c.MultipartForm()
 	}, "successfully parsed form", "fail to parse form", context.Background())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	files := form.File["files"]
 
 	//{uuid}, {format}, {filepath}, {thumbnail path}, {status}, {created at}, {uploaded at}, {metadata}
 	entries := [][]any{}
+
+	collectionentries := [][]any{}
 
 	message := []msg_type{}
 
@@ -75,17 +107,16 @@ func MediaUploadHandler(c *gin.Context) error {
 		image_uuid := uuid.New().String()
 		extension := strings.Split(file.Header.Get("Content-Type"), "/")
 		fmt.Println(extension)
-		savefilename := image_uuid + "." + extension[len(extension)-1]
-		saveurl := "media/originals/" + savefilename
-		thumbnailsaveurl := "media/thumbnails/" + image_uuid + ".avif"
 
-		savefilepath := path.Join(os.Getenv("APP_DATA"), saveurl)
+		saveurl := "gms/media/originals/" + image_uuid
+		thumbnailsaveurl := "gms/media/thumbnails/" + image_uuid
 
-		path := strings.TrimSpace(filepath.Join(" ", savefilepath))
+		savefilepath := path.Join(os.Getenv("APP_DATA"), "media", "originals", image_uuid)
+		thumbnailsavepath := path.Join(os.Getenv("APP_DATA"), "media", "thumbnails", image_uuid)
 
-		fmt.Println("Saving file to:", path)
+		fmt.Println("Saving file to:", savefilepath)
 
-		err := c.SaveUploadedFile(file, path, fs.FileMode.Perm(0o755))
+		err := c.SaveUploadedFile(file, savefilepath, fs.FileMode.Perm(0o755))
 
 		if err != nil {
 			return fmt.Errorf("failed to save uploaded file: %s", err)
@@ -95,6 +126,7 @@ func MediaUploadHandler(c *gin.Context) error {
 
 		entries = append(entries, []any{
 			image_uuid,
+			userUUID.(string),
 			file.Header.Get("Content-Type"),
 			saveurl,
 			"",
@@ -104,11 +136,20 @@ func MediaUploadHandler(c *gin.Context) error {
 			metadata,
 		})
 
+		collectionentries = append(collectionentries, []any{
+			userUUID.(string),
+			image_uuid,
+			time.Now(),
+		})
+
 		var p msg_type = msg_type{
-			UUID:             image_uuid,
-			FILEURLPATH:      saveurl,
-			SAVEPATH:         savefilepath,
-			THUMBNAILURLPATH: thumbnailsaveurl,
+			UUID:              image_uuid,
+			FILEURLPATH:       saveurl,
+			SAVEPATH:          savefilepath,
+			THUMBNAILSAVEPATH: thumbnailsavepath,
+			THUMBNAILURLPATH:  thumbnailsaveurl,
+			COLLECTIONID:      userUUID.(string),
+
 			// STATUS: "pending thumbnail",
 			// CREATEDAT: time.Now(),
 			// UPLOADEDAT: time.Now(),
@@ -119,10 +160,32 @@ func MediaUploadHandler(c *gin.Context) error {
 
 	}
 
-	_, err := serverutils.Postgrespool.CopyFrom(context.Background(), pgx.Identifier{"galleryindex", "images"}, []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}, pgx.CopyFromRows(entries))
+	_, err = serverutils.Postgrespool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"galleryindex", "images"},
+		[]string{"uuid",
+			"owner_uuid",
+			"format",
+			"filepath",
+			"thumbnail_filepath",
+			"status",
+			"created_at",
+			"uploaded_at",
+			"metadata"},
+		pgx.CopyFromRows(entries))
 
 	if err != nil {
-		return fmt.Errorf("fail to insert into database %s", err)
+		return fmt.Errorf("Fail to insert images indices into database %s", err)
+	}
+
+	_, err = serverutils.Postgrespool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"collections", "collection_images"},
+		[]string{"collection_uuid", "image_uuid", "added_at"},
+		pgx.CopyFromRows(collectionentries))
+
+	if err != nil {
+		return fmt.Errorf("Fail to insert user collection database %s", err)
 	}
 
 	for _, m := range message {
@@ -169,6 +232,8 @@ func MediaUploadHandler(c *gin.Context) error {
 			log.Printf("[X] Sent (to Vector) %s RBMQ ", jsonpub)
 		}
 	}
+
+	c.Status(201)
 
 	return nil
 }

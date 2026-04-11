@@ -7,13 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"strings"
 	"time"
 
-	"net/http"
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/qdrant/go-client/qdrant"
 )
 
@@ -26,7 +30,8 @@ type MediaQueryParam struct {
 }
 
 type SuggestionQueryParam struct {
-	UUID string `form:"uuid"`
+	UUID         string `form:"uuid"`
+	collectionID string `form:"collection_id"`
 }
 type PaginatedResponse struct {
 	Content []map[string]interface{} `json:"content"`
@@ -86,8 +91,142 @@ func unwrapPayloadValue(v *qdrant.Value) interface{} {
 	}
 }
 
-func QueryMedia(c *gin.Context) error {
+type FakeDB struct {
+	//Fake return data
+
+}
+
+type FakeResponse struct {
+	//Fake response data
+	DataToReturn [][]any
+}
+
+func (f *FakeResponse) Close() {
+	// Implementation for closing fake response
+}
+
+func (f *FakeResponse) Err() error {
+	// Implementation for getting error from fake response
+	return nil
+}
+
+func (f *FakeResponse) CommandTag() pgconn.CommandTag {
+	return pgconn.CommandTag{}
+}
+
+func (f *FakeResponse) FieldDescriptions() []pgconn.FieldDescription {
+	return []pgconn.FieldDescription{}
+}
+
+func (f *FakeResponse) Next() bool {
+	return false
+}
+
+func (f *FakeResponse) Scan(dest ...any) error {
+	return nil
+}
+
+func (f *FakeResponse) Values() ([]any, error) {
+	return nil, nil
+}
+
+func (f *FakeResponse) RawValues() [][]byte {
+	return nil
+}
+
+func (f *FakeResponse) Conn() *pgx.Conn {
+	return nil
+}
+
+func (f *FakeDB) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+	fake := &FakeResponse{
+		DataToReturn: [][]any{
+			// row 1: uuid comes back as [16]byte, then the format string
+			{
+				[16]byte{0xa4, 0x2b, 0x8f, 0x1e, 0xd3, 0x7c, 0x4a, 0x09,
+					0x81, 0x5e, 0x2f, 0x0c, 0x6d, 0x9e, 0x3b, 0x77},
+				"image/jpeg",
+			},
+			// row 2
+			{
+				[16]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+					0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00},
+				"image/png",
+			},
+		},
+	}
+	return fake, nil
+}
+
+func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
+	id := c.Param("id")
+	typeOfMedia := c.Param("type")
+	userUUID, exist := c.Get("userUUID")
+
+	if !exist {
+		c.Status(401)
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT uuid, owner_uuid 
+		FROM galleryindex.images
+		WHERE uuid = $1`
+
+	rows, err := querier.Query(ctx, query, id)
+
+	if err != nil {
+		log.Fatalf("query fails %s", err)
+	}
+
+	defer rows.Close()
+
+	if !rows.Next() {
+		c.Status(404)
+		return nil
+	}
+
+	var imageUUID string
+	var ownerUUID string
+
+	err = rows.Scan(&imageUUID, &ownerUUID)
+
+	if err != nil {
+		log.Fatalf("scan fails %s", err)
+	}
+
+	if ownerUUID != userUUID {
+		c.Status(403)
+		return nil
+	}
+
+	c.Header("X-Accel-Redirect", fmt.Sprintf("/%s/media/%s/%s",
+		os.Getenv("APP_DATA"),
+		typeOfMedia,
+		imageUUID,
+	))
+	c.Status(200)
+
+	return nil
+}
+
+func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
+	var idtemp any
+	var useruuid string
+	var exists bool
+	idtemp, exists = c.Get("userUUID")
+	useruuid = idtemp.(string)
+
+	if !exists || useruuid == "" {
+		c.Status(401)
+		return fmt.Errorf("Unauthorized: User not authenticated")
+	}
+
 	var param MediaQueryParam
+
 	if c.BindQuery(&param) != nil {
 		c.Status(400)
 		return nil
@@ -101,20 +240,20 @@ func QueryMedia(c *gin.Context) error {
 
 	selectstatement := serverutils.BuildSQL(ValidMediaAttributes, validattrpassedin)
 
-	pgconn := serverutils.Postgrespool
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := fmt.Sprintf(`
-		SELECT %s FROM galleryindex.images
+		SELECT %s FROM collections.collection_images
+		INNER JOIN galleryindex.images ON collections.collection_images.image_uuid = galleryindex.images.uuid
+		WHERE collections.collection_images.collection_uuid = $3
 		ORDER BY uploaded_at DESC
 		LIMIT $2
 		OFFSET $1
 	`, selectstatement)
 
 	// fmt.Print(query)
-	rows, err := pgconn.Query(ctx, query, param.Offset, param.Limit)
+	rows, err := querier.Query(ctx, query, param.Offset, param.Limit, useruuid)
 
 	if err != nil {
 		log.Fatalf("query fails %s", err)
@@ -158,7 +297,31 @@ func QueryMedia(c *gin.Context) error {
 	return nil
 }
 
-func QueryMediaRelated(c *gin.Context) error {
+func QueryMediaRelated(c *gin.Context, querier PostgresQuerier) error {
+	useruuid, exists := c.Get("userUUID")
+	if !exists || useruuid == "" {
+		c.Status(401)
+		return fmt.Errorf("Unauthorized: User not authenticated")
+	}
+
+	query := `SELECT * FROM collections.collection_data
+				WHERE uuid = $1`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rows, err := querier.Query(ctx, query, useruuid)
+	if err != nil {
+		log.Fatalf("query fails %s", err)
+	}
+
+	defer rows.Close()
+
+	if !rows.Next() {
+		c.Status(404)
+		return fmt.Errorf("No collection found for user %s", useruuid)
+	}
+
 	var param SuggestionQueryParam
 
 	if c.BindQuery(&param) != nil {
@@ -170,6 +333,20 @@ func QueryMediaRelated(c *gin.Context) error {
 	points, err := serverutils.Qdrantclient.Query(context.Background(), &qdrant.QueryPoints{
 		CollectionName: "media",
 		Query:          qdrant.NewQueryID(qdrant.NewID(param.UUID)),
+		Filter: &qdrant.Filter{
+			Must: []*qdrant.Condition{{
+				ConditionOneOf: &qdrant.Condition_Field{
+					Field: &qdrant.FieldCondition{
+						Key: "collection_id",
+						Match: &qdrant.Match{
+							MatchValue: &qdrant.Match_Text{
+								Text: param.collectionID,
+							},
+						},
+					},
+				},
+			}},
+		},
 		ScoreThreshold: &scorethreshold,
 		Limit:          &limit,
 	})

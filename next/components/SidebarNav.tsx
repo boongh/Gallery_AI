@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { ActionIcon, Box } from '@mantine/core';
+import { useRouter } from 'next/navigation';
 import React from 'react';
 
 function NavLink({
@@ -42,6 +43,17 @@ function NavLink({
 }
 
 function NavPanelContent({ onLinkClick }: { onLinkClick?: () => void }) {
+  const router = useRouter();
+
+  async function handleLogout() {
+    // Clear the auth_token cookie by calling a dedicated endpoint if one
+    // exists, or by simply navigating to /login. For now we rely on the
+    // browser's cookie expiry; a proper logout endpoint can be added later.
+    // If the backend gains a DELETE /gms/auth/session endpoint, call it here.
+    router.push('/login');
+    onLinkClick?.();
+  }
+
   return (
     <>
       <div style={{ padding: '0 20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
@@ -52,7 +64,7 @@ function NavPanelContent({ onLinkClick }: { onLinkClick?: () => void }) {
           My Images
         </div>
       </div>
-      <nav style={{ padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
         <NavLink
           href="/"
           onClick={onLinkClick}
@@ -88,6 +100,39 @@ function NavPanelContent({ onLinkClick }: { onLinkClick?: () => void }) {
           Collections
         </NavLink>
       </nav>
+
+      {/* Bottom: log out link */}
+      <div style={{ padding: '12px 12px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <button
+          onClick={handleLogout}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            width: '100%',
+            padding: '9px 12px', borderRadius: 8,
+            color: 'rgba(255,255,255,0.5)', background: 'transparent',
+            border: 'none', cursor: 'pointer',
+            fontSize: 14, fontWeight: 500,
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)';
+            (e.currentTarget as HTMLElement).style.color = '#fff';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = 'transparent';
+            (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)';
+          }}
+        >
+          <span style={{ opacity: 0.6 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </span>
+          Log out
+        </button>
+      </div>
     </>
   );
 }

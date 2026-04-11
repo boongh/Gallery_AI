@@ -1,10 +1,20 @@
 CREATE SCHEMA galleryindex AUTHORIZATION gallery;
 CREATE SCHEMA cache AUTHORIZATION gallery;
 CREATE SCHEMA collections AUTHORIZATION gallery;
+CREATE SCHEMA users AUTHORIZATION gallery;
 CREATE SCHEMA system AUTHORIZATION gallery;
+
+CREATE TABLE users.credentials (
+    uuid UUID PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    salt TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT now()
+);
 
 CREATE TABLE galleryindex.images (
     uuid UUID PRIMARY KEY,
+    owner_uuid UUID REFERENCES users.credentials(uuid) ON DELETE SET NULL,
     format TEXT NOT NULL,
     filepath TEXT NOT NULL,
     thumbnail_filepath TEXT,
@@ -32,6 +42,7 @@ CREATE TABLE cache.imagesqueries (
 
 CREATE TABLE collections.collection_data (
     uuid UUID PRIMARY KEY,
+    owner_uuid UUID REFERENCES users.credentials(uuid) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT now(),
     name TEXT NOT NULL,
     description TEXT,
