@@ -43,6 +43,7 @@ def embed_image_callback(ch, method, properties, body):
                         id=uuid,
                         vector=vector,
                         payload={
+                            "collection_id": jsonbody['collection_id'],
                             "filepath": urlpath,
                             "thumbnail_filepath": jsonbody['thumbnailurlpath'],
                             }

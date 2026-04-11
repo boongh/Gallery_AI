@@ -1,12 +1,22 @@
 package main
 
 import (
+	AuthHandler "MediaServer/auth"
 	"MediaServer/collection"
 	"MediaServer/mediahandler"
+	"MediaServer/serverutils"
 	"log"
 
 	"github.com/gin-gonic/gin"
 )
+
+func GET_MediaID(c *gin.Context) {
+	err := mediahandler.GetMediaByID(c, serverutils.Postgrespool)
+	if err != nil {
+		log.Printf("Failed to retrieve media:%s", err)
+		c.Status(500)
+	}
+}
 
 // @Summary		Upload images
 // @Description	Upload images via form data in the field "files"
@@ -15,8 +25,8 @@ import (
 // @Produce		text/plain
 // @Success		200
 // @Router			/gms/media [POST]
-func MediaUpload(c *gin.Context) {
-	err := mediahandler.MediaUploadHandler(c)
+func POST_MediaUpload(c *gin.Context) {
+	err := mediahandler.MediaUploadHandler(c, serverutils.Postgrespool, serverutils.Postgrespool)
 	if err != nil {
 		log.Println("Image Upload Fail:", err)
 		c.Status(500)
@@ -34,8 +44,8 @@ func MediaUpload(c *gin.Context) {
 // @Produce		application/json
 // @Success		200
 // @Router			/gms/media [GET]
-func MediaQuery(c *gin.Context) {
-	err := mediahandler.QueryMedia(c)
+func GET_MediaQuery(c *gin.Context) {
+	err := mediahandler.QueryMedia(c, serverutils.Postgrespool)
 	if err != nil {
 		log.Println("Media Query Fail:", err)
 		c.Status(500)
@@ -49,7 +59,7 @@ func MediaQuery(c *gin.Context) {
 // @Produce		application/json
 // @Success		200
 // @Router			/gms/media/query [POST]
-func MediaAdvancedQuery(c *gin.Context) {
+func POST_MediaAdvancedQuery(c *gin.Context) {
 	err := mediahandler.AdvancedMediaQuery(c)
 	if err != nil {
 		log.Println("Advanced Media Query Fail:", err)
@@ -64,9 +74,9 @@ func MediaAdvancedQuery(c *gin.Context) {
 // @Produce		application/json
 // @Success		200
 // @Router			/gms/media/suggestions [GET]
-func MediaQueryRelated(c *gin.Context) {
+func GET_MediaQueryRelated(c *gin.Context) {
 
-	err := mediahandler.QueryMediaRelated(c)
+	err := mediahandler.QueryMediaRelated(c, serverutils.Postgrespool)
 	if err != nil {
 		log.Println("Media Query Fail:", err)
 		c.Status(500)
@@ -86,6 +96,26 @@ func MediaQuerySearch(c *gin.Context) {
 		log.Println("Collection Creation Failed:", err)
 		c.Status(500)
 	}
+}
+
+func POST_UserSignup(c *gin.Context) {
+	err := AuthHandler.Auth_Post_Signup_Handler(c, serverutils.Postgrespool)
+	if err != nil {
+		log.Println("User Signup Failed:", err)
+		c.Status(500)
+	}
+}
+
+func POST_UserLogin(c *gin.Context) {
+	err := AuthHandler.Auth_Post_Login_Handler(c, serverutils.Postgrespool)
+	if err != nil {
+		log.Println("User Login Failed:", err)
+		c.Status(500)
+	}
+}
+
+func GET_AuthMe(c *gin.Context) {
+	AuthHandler.Auth_Get_Me_Handler(c)
 }
 
 // @Summary		Create a new collection

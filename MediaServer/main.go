@@ -3,10 +3,12 @@ package main
 import (
 	"MediaServer/serverutils"
 	// "fmt"
+	AuthHandler "MediaServer/auth"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
 	// "github.com/joho/godotenv"
 
 	swaggerFiles "github.com/swaggo/files"
@@ -56,19 +58,32 @@ func main() {
 		})
 	})
 
-	//Upload
 	{
-		uploadgroup := server.Group("/media")
-		uploadgroup.POST("", MediaUpload)
-		uploadgroup.GET("", MediaQuery)
+		server.POST("/signup", POST_UserSignup)
+		server.POST("/login", POST_UserLogin)
+	}
 
-		//Get to test python easier first
-		uploadgroup.POST("/query", MediaAdvancedQuery)
-		uploadgroup.GET("/suggestions", MediaQueryRelated)
+	protected := server.Group("/")
+	protected.Use(AuthHandler.AuthMiddleware())
+	//Upload
+
+	{
+		authgroup := protected.Group("/auth")
+		authgroup.GET("/me", GET_AuthMe)
 	}
 
 	{
-		colgroup := server.Group("/collection")
+		uploadgroup := protected.Group("/media")
+		uploadgroup.GET("", GET_MediaQuery)
+		uploadgroup.GET("/:type/:id", GET_MediaID)
+		uploadgroup.GET("/suggestions", GET_MediaQueryRelated)
+
+		uploadgroup.POST("/:collection_id", POST_MediaUpload)
+		uploadgroup.POST("/query", POST_MediaAdvancedQuery)
+	}
+
+	{
+		colgroup := protected.Group("/collection")
 		colgroup.GET("", CollectionQueryHandler)
 		colgroup.POST("", CollectionCreationHandler)
 	}

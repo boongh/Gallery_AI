@@ -130,6 +130,7 @@ services:
     build: ./MediaServer
     
     environment:
+      JWT_SECRET_KEY: CHANGE_ME_TO_A_STRONG_SECRET_KEY
       EMBEDAPIURL: embedapi
       RABBITMQ_HOST: messagequeue
       QDRANTHOST: qdrantdb
@@ -144,6 +145,9 @@ services:
       RABBITPASSWORD: guest
       RABBITHOST: messagequeue
       RABBITPORT: 5672
+      PRODUCTION: "false"
+
+      
     ports:
       - 8080:8080
     volumes:

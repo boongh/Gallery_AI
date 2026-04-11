@@ -4,11 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@mantine/core/styles.css";
 import { theme } from "../theme.ts";
-import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
-import SidebarNav from '@/components/SidebarNav';
-import { MantineProvider } from "@mantine/core";
+import { ColorSchemeScript, mantineHtmlProps, MantineProvider } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
-
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,17 +32,10 @@ export default function RootLayout({
       <head>
         <ColorSchemeScript />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <MantineProvider theme={theme} defaultColorScheme="dark">
-        <ModalsProvider>
-            <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: '#0d0d0d' }}>
-              <SidebarNav />
-              <div style={{ flex: 1, minWidth: 0, overflowX: 'clip' }}>
-                {children}
-              </div>
-            </div>
+          <ModalsProvider>
+            {children}
           </ModalsProvider>
         </MantineProvider>
       </body>

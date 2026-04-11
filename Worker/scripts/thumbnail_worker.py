@@ -20,13 +20,8 @@ def main():
     print("Worker process started, waiting for RabbitMQ...");
     def generate_thumbnail(image_path, thumbnail_path):
 
-        print("Importing pillow:")
-        print("2")
-
         print("Pillow version: ", PIL.__version__)
         print(image_path, thumbnail_path)
-        print(osp.join(os.getenv("APP_DATA")))
-        print(osp.join(os.getenv("APP_DATA"), image_path))
 
         try:
             from PIL import Image, ImageOps
@@ -36,7 +31,7 @@ def main():
             print("4")
             image.thumbnail((512, 512))
             image = ImageOps.exif_transpose(image)  # Correct orientation based on EXIF data
-            image.save(thumbnail_path)
+            image.save(thumbnail_path, format="avif")
 
         except Exception as e:
             print(f"Exception: {e}", flush=True)
@@ -87,16 +82,16 @@ def main():
             categorypath = "media";
             
             thumbnail_urlpath = jsonbody['thumbnailurlpath'];
-            thumbnail_path = osp.join(os.getenv("APP_DATA"), thumbnail_urlpath)
+            thumbnail_path = jsonbody['thumbnailsavepath']
             
             os.makedirs(osp.dirname(thumbnail_path), exist_ok=True);
             
             print("1")
-            print("Generating thumbnail for ", urlpath)
-            generate_thumbnail(osp.join(os.getenv("APP_DATA"), urlpath), thumbnail_path)
+            print("Generating thumbnail for ", thumbnail_path)
+            generate_thumbnail(savepath, thumbnail_path)
 
             print(f"At {time.time_ns()}")
-            print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid + ".jpg")}");
+            print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid)}");
             
             if not update_database_thumbnail(uuid, thumbnail_urlpath):
                 print("Failed to update database thumbnail path for uuid ", uuid)
