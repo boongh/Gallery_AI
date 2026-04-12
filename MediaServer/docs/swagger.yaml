@@ -1,4 +1,14 @@
 definitions:
+  AuthHandler.UserCredential:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
   collection.NewCollection:
     properties:
       description:
@@ -12,6 +22,27 @@ info:
   title: Media Server API
   version: "0.1"
 paths:
+  /auth/me:
+    get:
+      description: Returns the authenticated user's UUID, username, and account creation
+        timestamp. Requires a valid auth_token cookie.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: uuid, username, created_at
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      summary: Get current user info
+      tags:
+      - Auth
   /gms/collection:
     get:
       description: Query for all available collections to a specific user by the parameter
@@ -101,8 +132,36 @@ paths:
       summary: Upload images
       tags:
       - Creation
-  /gms/media/query:
+  /gms/media/{type}/{id}:
     get:
+      description: Retrieve a media file by its UUID and type. Returns the file via
+        X-Accel-Redirect (served by nginx). Returns 403 if the authenticated user
+        does not own the media.
+      parameters:
+      - description: Media type (e.g. thumbnail, original)
+        in: path
+        name: type
+        required: true
+        type: string
+      - description: UUID of the media item
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Get media file by ID
+      tags:
+      - Query
+  /gms/media/query:
+    post:
       description: Query for by word or filter
       parameters:
       - description: Text to search for
@@ -133,4 +192,58 @@ paths:
       summary: Get media suggestions
       tags:
       - Query
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate with username and password. Sets an HttpOnly cookie
+        named auth_token (JWT, 7-day expiry) on success and returns the user UUID.
+      parameters:
+      - description: Username and password
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/AuthHandler.UserCredential'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: userid field contains the user UUID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      summary: Log in
+      tags:
+      - Auth
+  /signup:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account with a username and password. Also creates
+        a default collection for the user. Returns 201 on success.
+      parameters:
+      - description: Username and password
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/AuthHandler.UserCredential'
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      summary: Register a new user
+      tags:
+      - Auth
 swagger: "2.0"

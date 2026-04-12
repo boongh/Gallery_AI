@@ -15,6 +15,36 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/me": {
+            "get": {
+                "description": "Returns the authenticated user's UUID, username, and account creation timestamp. Requires a valid auth_token cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Get current user info",
+                "responses": {
+                    "200": {
+                        "description": "uuid, username, created_at",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
         "/gms/collection": {
             "get": {
                 "description": "Query for all available collections to a specific user by the parameter specified",
@@ -150,7 +180,7 @@ const docTemplate = `{
             }
         },
         "/gms/media/query": {
-            "get": {
+            "post": {
                 "description": "Query for by word or filter",
                 "produces": [
                     "application/json"
@@ -198,9 +228,143 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/gms/media/{type}/{id}": {
+            "get": {
+                "description": "Retrieve a media file by its UUID and type. Returns the file via X-Accel-Redirect (served by nginx). Returns 403 if the authenticated user does not own the media.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Query"
+                ],
+                "summary": "Get media file by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Media type (e.g. thumbnail, original)",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UUID of the media item",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/login": {
+            "post": {
+                "description": "Authenticate with username and password. Sets an HttpOnly cookie named auth_token (JWT, 7-day expiry) on success and returns the user UUID.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Log in",
+                "parameters": [
+                    {
+                        "description": "Username and password",
+                        "name": "credentials",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/AuthHandler.UserCredential"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "userid field contains the user UUID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/signup": {
+            "post": {
+                "description": "Create a new user account with a username and password. Also creates a default collection for the user. Returns 201 on success.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Register a new user",
+                "parameters": [
+                    {
+                        "description": "Username and password",
+                        "name": "credentials",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/AuthHandler.UserCredential"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "AuthHandler.UserCredential": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "collection.NewCollection": {
             "type": "object",
             "properties": {
