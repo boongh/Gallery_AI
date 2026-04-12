@@ -340,7 +340,7 @@ func QueryMediaRelated(c *gin.Context, querier PostgresQuerier) error {
 						Key: "collection_id",
 						Match: &qdrant.Match{
 							MatchValue: &qdrant.Match_Text{
-								Text: param.collectionID,
+								Text: useruuid.(string),
 							},
 						},
 					},
@@ -364,9 +364,15 @@ func QueryMediaRelated(c *gin.Context, querier PostgresQuerier) error {
 }
 
 func AdvancedMediaQuery(c *gin.Context) error {
-	var start = time.Now()
-	var param MediaAdvancedQueryParam
-	var queryvectors []*qdrant.VectorInput
+	start, param, queryvectors := time.Now(), MediaAdvancedQueryParam{}, []*qdrant.VectorInput{}
+
+	useruuid, exists := c.Get("userUUID")
+
+	if !exists {
+		c.Status(401)
+		return fmt.Errorf("Not authorized")
+	}
+
 	err := c.BindJSON(&param)
 	if err != nil {
 		c.Status(400)
@@ -434,10 +440,25 @@ func AdvancedMediaQuery(c *gin.Context) error {
 		CollectionName: "media",
 		Query: qdrant.NewQueryRecommend(&qdrant.RecommendInput{
 			Positive: queryvectors,
+
 			// Negative: []*qdrant.VectorInput{
 			// 	qdrant.NewVectorInput(0.01, 0.45, 0.67),
 			// },
 		}),
+		Filter: &qdrant.Filter{
+			Must: []*qdrant.Condition{{
+				ConditionOneOf: &qdrant.Condition_Field{
+					Field: &qdrant.FieldCondition{
+						Key: "collection_id",
+						Match: &qdrant.Match{
+							MatchValue: &qdrant.Match_Text{
+								Text: useruuid.(string),
+							},
+						},
+					},
+				},
+			}},
+		},
 		// Query:          qdrant.NewQueryNearest(qdrant.NewVectorInput(responseobj.Content.Vector...)),
 		Offset:      &param.Offset,
 		Limit:       &param.Limit,
@@ -459,10 +480,6 @@ func AdvancedMediaQuery(c *gin.Context) error {
 		results[i] = result
 	}
 
-	fmt.Println(results)
-
-	print(len(points))
-	print(param.Limit)
 	nextquerrytemp := param
 	nextQuery := (*MediaAdvancedQueryParam)(nil)
 	if uint64(len(points)) == param.Limit {
@@ -470,8 +487,6 @@ func AdvancedMediaQuery(c *gin.Context) error {
 		nextquerrytemp.Offset = param.Offset + param.Limit
 		nextquerrytemp.PointQuery = vectorembeddings
 	}
-
-	fmt.Println(nextQuery)
 
 	var elapsed = time.Since(start).Milliseconds()
 	c.JSON(200, AdvancedQueryPaginatedResponse{

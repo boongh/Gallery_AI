@@ -1,5 +1,7 @@
 'use client';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useDisclosure } from '@mantine/hooks';
+import { useRouter } from 'next/navigation';
 import SidebarNav from '@/components/SidebarNav';
 import ProfileSidebar from '@/components/ProfileSidebar';
 
@@ -31,6 +33,7 @@ export function useUser() {
 }
 
 function UserProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [userUUID, setUserUUID] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
@@ -48,12 +51,10 @@ function UserProvider({ children }: { children: React.ReactNode }) {
         setCreatedAt(data.created_at);
       })
       .catch(() => {
-        // Not logged in — middleware will redirect to /login on protected
-        // backend calls; let the user stay on the page and the upload will
-        // simply fail with a 401 until they log in.
         setUserUUID(null);
         setUsername(null);
         setCreatedAt(null);
+        router.push('/login');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -65,16 +66,68 @@ function UserProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Nav + Profile contexts — shared open state so page top bars can trigger
+// the sidebar panels without floating fixed-position buttons.
+// ---------------------------------------------------------------------------
+
+interface NavContextValue {
+  isOpen: boolean;
+  openNav: () => void;
+  closeNav: () => void;
+}
+
+interface ProfileContextValue {
+  isOpen: boolean;
+  openProfile: () => void;
+  closeProfile: () => void;
+}
+
+const NavContext = createContext<NavContextValue>({
+  isOpen: false,
+  openNav: () => {},
+  closeNav: () => {},
+});
+
+const ProfileContext = createContext<ProfileContextValue>({
+  isOpen: false,
+  openProfile: () => {},
+  closeProfile: () => {},
+});
+
+export function useNavContext() {
+  return useContext(NavContext);
+}
+
+export function useProfileContext() {
+  return useContext(ProfileContext);
+}
+
+function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const [navOpen, { open: openNav, close: closeNav }] = useDisclosure(false);
+  const [profileOpen, { open: openProfile, close: closeProfile }] = useDisclosure(false);
+
+  return (
+    <NavContext.Provider value={{ isOpen: navOpen, openNav, closeNav }}>
+      <ProfileContext.Provider value={{ isOpen: profileOpen, openProfile, closeProfile }}>
+        {children}
+      </ProfileContext.Provider>
+    </NavContext.Provider>
+  );
+}
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <UserProvider>
-      <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: '#0d0d0d' }}>
-        <SidebarNav />
-        <div style={{ flex: 1, minWidth: 0, overflowX: 'clip' }}>
-          {children}
+      <AppStateProvider>
+        <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: '#0d0d0d' }}>
+          <SidebarNav />
+          <div style={{ flex: 1, minWidth: 0, overflowX: 'clip' }}>
+            {children}
+          </div>
         </div>
-      </div>
-      <ProfileSidebar />
+        <ProfileSidebar />
+      </AppStateProvider>
     </UserProvider>
   );
 }

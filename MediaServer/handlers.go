@@ -10,6 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// @Summary		Get media file by ID
+// @Description	Retrieve a media file by its UUID and type. Returns the file via X-Accel-Redirect (served by nginx). Returns 403 if the authenticated user does not own the media.
+// @Tags			Query
+// @Param			type	path	string	true	"Media type (e.g. thumbnail, original)"
+// @Param			id		path	string	true	"UUID of the media item"
+// @Produce		application/octet-stream
+// @Success		200
+// @Failure		403
+// @Failure		404
+// @Router			/gms/media/{type}/{id} [GET]
 func GET_MediaID(c *gin.Context) {
 	err := mediahandler.GetMediaByID(c, serverutils.Postgrespool)
 	if err != nil {
@@ -98,6 +108,15 @@ func MediaQuerySearch(c *gin.Context) {
 	}
 }
 
+// @Summary		Register a new user
+// @Description	Create a new user account with a username and password. Also creates a default collection for the user. Returns 201 on success.
+// @Tags			Auth
+// @Accept			application/json
+// @Param			credentials	body	AuthHandler.UserCredential	true	"Username and password"
+// @Success		201
+// @Failure		400
+// @Failure		500
+// @Router			/signup [POST]
 func POST_UserSignup(c *gin.Context) {
 	err := AuthHandler.Auth_Post_Signup_Handler(c, serverutils.Postgrespool)
 	if err != nil {
@@ -106,6 +125,17 @@ func POST_UserSignup(c *gin.Context) {
 	}
 }
 
+// @Summary		Log in
+// @Description	Authenticate with username and password. Sets an HttpOnly cookie named auth_token (JWT, 7-day expiry) on success and returns the user UUID.
+// @Tags			Auth
+// @Accept			application/json
+// @Produce		application/json
+// @Param			credentials	body	AuthHandler.UserCredential	true	"Username and password"
+// @Success		200	{object}	map[string]string	"userid field contains the user UUID"
+// @Failure		400
+// @Failure		401
+// @Failure		500
+// @Router			/login [POST]
 func POST_UserLogin(c *gin.Context) {
 	err := AuthHandler.Auth_Post_Login_Handler(c, serverutils.Postgrespool)
 	if err != nil {
@@ -114,8 +144,17 @@ func POST_UserLogin(c *gin.Context) {
 	}
 }
 
+// @Summary		Get current user info
+// @Description	Returns the authenticated user's UUID, username, and account creation timestamp. Requires a valid auth_token cookie.
+// @Tags			Auth
+// @Produce		application/json
+// @Success		200	{object}	map[string]interface{}	"uuid, username, created_at"
+// @Failure		401
+// @Failure		404
+// @Failure		500
+// @Router			/auth/me [GET]
 func GET_AuthMe(c *gin.Context) {
-	AuthHandler.Auth_Get_Me_Handler(c)
+	AuthHandler.Auth_Get_Me_Handler(c, serverutils.Postgrespool)
 }
 
 // @Summary		Create a new collection

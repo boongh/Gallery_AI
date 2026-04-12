@@ -134,10 +134,27 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
     </Box>
   );
 
+  async function handleDownload() {
+    if (!activeImage) return;
+    try {
+      const res = await fetch(activeImage.filepath, { credentials: 'include' });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), {
+        href: url,
+        download: activeImage.format ? `${activeImage.id}.${activeImage.format}` : activeImage.id,
+      });
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  }
+
   const actionsContent = (
     <Stack gap="xs" p="md">
       <Text size="xs" tt="uppercase" fw={600} c="dimmed">Actions</Text>
-      <Button variant="default" fullWidth justify="flex-start">↓ Download</Button>
+      <Button variant="filled" color="blue" fullWidth justify="flex-start" onClick={handleDownload}>↓ Download</Button>
       <Button variant="default" fullWidth justify="flex-start">+ Add to Collection</Button>
       <Text size="xs" tt="uppercase" fw={600} c="dimmed" mt="sm">Tags</Text>
       <Select placeholder="Select tags…" data={[]} />

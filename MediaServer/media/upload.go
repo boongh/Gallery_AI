@@ -34,7 +34,7 @@ type Server struct {
 	Pool *pgxpool.Pool
 }
 
-func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter FakeImagePostgresInserter) error {
+func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImagePostgresInserter) error {
 
 	userUUID, exist := c.Get("userUUID")
 	collectionID := c.Param("collection_id")
@@ -52,15 +52,13 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter FakeIm
 
 	rows, err := querier.Query(ctx, query, collectionID, userUUID)
 
-	println(rows.Values())
-
 	if err != nil {
 		log.Fatalf("query fails %s", err)
 	}
 
 	defer rows.Close()
 
-	if rows.Next() {
+	if !rows.Next() {
 		c.Status(404)
 		return fmt.Errorf("No collection found for user %s", userUUID)
 	}
