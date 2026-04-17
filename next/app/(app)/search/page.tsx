@@ -14,6 +14,7 @@ interface QueryResult {
   original_url?: string;
   thumbnail_url?: string;
   preview_url?: string;
+  created_at?: string;
   status?: string;
 }
 
@@ -34,8 +35,8 @@ function mapResult(result: QueryResult): ImageData {
     preview_url: result.preview_url ?? '',
     format: '',
     status: result.status ?? '',
-    createdAt: new Date(0),
-    uploadedAt: new Date(0),
+    createdAt: result.created_at ? new Date(result.created_at) : new Date(0),
+    uploadedAt: result.created_at ? new Date(result.created_at) : new Date(0),
     metaData: {},
   };
 }

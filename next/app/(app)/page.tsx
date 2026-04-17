@@ -1,12 +1,31 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactElement } from "react";
 import {
   ActionIcon, Box, Button, Center, Collapse, FileInput, Group,
   Loader, Stack, Text, TextInput,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
+import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import { useUser, useNavContext, useProfileContext } from './layout';
+
+type DayGroup = { year: number; month: number; day: number; images: ImageData[] };
+
+function groupImagesByDate(images: ImageData[]): DayGroup[] {
+  const map = new Map<string, ImageData[]>();
+  for (const img of images) {
+    const d = img.createdAt;
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(img);
+  }
+  return [...map.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, imgs]) => {
+      const [year, month, day] = key.split('-').map(Number);
+      return { year, month, day, images: imgs };
+    });
+}
 
 export default function Home() {
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
@@ -35,6 +54,7 @@ export default function Home() {
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const parseImages = (raw: any[]): ImageData[] =>
     raw.map(img => ({
@@ -57,8 +77,8 @@ export default function Home() {
       preview_url: r.preview_url ?? '',
       status: r.status ?? '',
       format: '',
-      uploadedAt: new Date(0),
-      createdAt: new Date(0),
+      uploadedAt: r.created_at ? new Date(r.created_at) : new Date(0),
+      createdAt: r.created_at ? new Date(r.created_at) : new Date(0),
       metaData: {},
     }));
 
@@ -224,31 +244,27 @@ export default function Home() {
     }
   }
 
-  async function handleBulkDelete() {
-    if (!window.confirm(`Delete ${selectedIds.size} image${selectedIds.size === 1 ? '' : 's'}?`)) return;
+  async function doBulkDelete() {
     const ids = [...selectedIds];
-    try {
-      const res = await fetch('/gms/media/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delete_id: ids }),
+    const res = await fetch('/gms/media/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delete_id: ids }),
+    });
+    if (res.status === 204) {
+      setImages(prev => prev.filter(img => !selectedIds.has(img.id)));
+      setImageIndex(prev => {
+        const next = new Map(prev);
+        ids.forEach(id => next.delete(id));
+        imageIndexRef.current = next;
+        return next;
       });
-      if (res.status === 204) {
-        setImages(prev => prev.filter(img => !selectedIds.has(img.id)));
-        setImageIndex(prev => {
-          const next = new Map(prev);
-          ids.forEach(id => next.delete(id));
-          imageIndexRef.current = next;
-          return next;
-        });
-        if (isSearchActive) {
-          setSearchResults(prev => prev ? prev.filter(img => !selectedIds.has(img.id)) : null);
-        }
-        setSelectedIds(new Set());
-        setSelectMode(false);
+      if (isSearchActive) {
+        setSearchResults(prev => prev ? prev.filter(img => !selectedIds.has(img.id)) : null);
       }
-    } catch (err) {
-      console.error('Bulk delete error:', err);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      setDeleteModalOpen(false);
     }
   }
 
@@ -411,7 +427,7 @@ export default function Home() {
               variant="light"
               color="red"
               disabled={selectedIds.size === 0}
-              onClick={handleBulkDelete}
+              onClick={() => setDeleteModalOpen(true)}
             >
               Delete
             </Button>
@@ -476,104 +492,109 @@ export default function Home() {
               </Text>
             </Stack>
           </Center>
-        ) : (
-          <Box
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(120px, 20vw, 180px), 1fr))',
-              gap: isMobile ? 6 : 8,
-            }}
-          >
+        ) : isSearchActive ? (
+          <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(120px, 20vw, 180px), 1fr))', gap: isMobile ? 6 : 8 }}>
             {displayedImages.map(image => {
               const isSelected = selectedIds.has(image.id);
               return (
                 <Box
                   key={image.id}
-                  onClick={() => {
-                    if (selectMode) {
-                      toggleImageSelection(image.id);
-                    } else {
-                      setLightboxImage(image);
-                    }
-                  }}
+                  onClick={() => { if (selectMode) { toggleImageSelection(image.id); } else { setLightboxImage(image); } }}
                   style={{
-                    aspectRatio: '1',
-                    overflow: 'hidden',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    background: 'var(--mantine-color-dark-6)',
-                    position: 'relative',
+                    aspectRatio: '1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer',
+                    background: 'var(--mantine-color-dark-6)', position: 'relative',
                     transition: selectMode ? 'none' : 'transform 0.15s, box-shadow 0.15s',
                     outline: isSelected ? '2px solid var(--mantine-color-blue-5)' : 'none',
                     outlineOffset: '-2px',
                   }}
-                  onMouseEnter={e => {
-                    if (selectMode) return;
-                    (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)';
-                    (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
-                  }}
-                  onMouseLeave={e => {
-                    if (selectMode) return;
-                    (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                    (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                  }}
+                  onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)'; }}
+                  onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                 >
-                  <img
-                    src={thumbSrc(image)}
-                    alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    onError={(e) => {
-                      const el = e.currentTarget;
-                      if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; }
-                      else if (el.src.includes('/previews/')) { el.src = image.original_url; }
-                    }}
+                  <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    onError={(e) => { const el = e.currentTarget; if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; } else if (el.src.includes('/previews/')) { el.src = image.original_url; } }}
                   />
                   {isSelected && (
-                    <Box
-                      style={{
-                        position: 'absolute', inset: 0,
-                        background: 'rgba(0,0,0,0.5)',
-                        display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
-                        padding: 6,
-                      }}
-                    >
-                      <Box
-                        style={{
-                          width: 20, height: 20, borderRadius: '50%',
-                          background: 'var(--mantine-color-blue-5)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
+                    <Box style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
+                      <Box style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--mantine-color-blue-5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       </Box>
                     </Box>
                   )}
                   {selectMode && !isSelected && (
-                    <Box
-                      style={{
-                        position: 'absolute', inset: 0,
-                        display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
-                        padding: 6,
-                      }}
-                    >
-                      <Box
-                        style={{
-                          width: 20, height: 20, borderRadius: '50%',
-                          border: '2px solid rgba(255,255,255,0.6)',
-                          background: 'rgba(0,0,0,0.3)',
-                          flexShrink: 0,
-                        }}
-                      />
+                    <Box style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
+                      <Box style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.6)', background: 'rgba(0,0,0,0.3)', flexShrink: 0 }} />
                     </Box>
                   )}
                 </Box>
               );
             })}
           </Box>
-        )}
+        ) : (() => {
+          const groups = groupImagesByDate(images);
+          let lastYear: number | null = null;
+          let lastMonth: number | null = null;
+          const sections: ReactElement[] = [];
+          for (const { year, month, day, images: groupImages } of groups) {
+            const showYear = year !== lastYear;
+            const showMonth = showYear || month !== lastMonth;
+            lastYear = year;
+            lastMonth = month;
+            const monthLabel = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
+            const dayLabel = new Date(year, month, day).toLocaleString('default', { weekday: 'long', day: 'numeric' });
+            sections.push(
+              <Box key={`${year}-${month}-${day}`}>
+                {showYear && (
+                  <Text style={{ fontSize: isMobile ? 24 : 30, fontWeight: 700, marginTop: sections.length === 0 ? 0 : 32 }}>
+                    {year}
+                  </Text>
+                )}
+                {showMonth && (
+                  <Text style={{ fontSize: isMobile ? 16 : 20, fontWeight: 600, marginTop: showYear ? 4 : 24 }}>
+                    {monthLabel}
+                  </Text>
+                )}
+                <Text size="sm" c="dimmed" mb={8} mt={showMonth ? 4 : 16}>{dayLabel}</Text>
+                <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(120px, 20vw, 180px), 1fr))', gap: isMobile ? 6 : 8, marginBottom: 8 }}>
+                  {groupImages.map(image => {
+                    const isSelected = selectedIds.has(image.id);
+                    return (
+                      <Box
+                        key={image.id}
+                        onClick={() => { if (selectMode) { toggleImageSelection(image.id); } else { setLightboxImage(image); } }}
+                        style={{
+                          aspectRatio: '1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer',
+                          background: 'var(--mantine-color-dark-6)', position: 'relative',
+                          transition: selectMode ? 'none' : 'transform 0.15s, box-shadow 0.15s',
+                          outline: isSelected ? '2px solid var(--mantine-color-blue-5)' : 'none',
+                          outlineOffset: '-2px',
+                        }}
+                        onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)'; }}
+                        onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                      >
+                        <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          onError={(e) => { const el = e.currentTarget; if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; } else if (el.src.includes('/previews/')) { el.src = image.original_url; } }}
+                        />
+                        {isSelected && (
+                          <Box style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
+                            <Box style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--mantine-color-blue-5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </Box>
+                          </Box>
+                        )}
+                        {selectMode && !isSelected && (
+                          <Box style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
+                            <Box style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.6)', background: 'rgba(0,0,0,0.3)', flexShrink: 0 }} />
+                          </Box>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            );
+          }
+          return <>{sections}</>;
+        })()}
 
         {!isSearchActive && nextUrl && !loading && images.length > 0 && (
           <Center mt={32}>
@@ -597,6 +618,12 @@ export default function Home() {
         onClose={() => setLightboxImage(null)}
         initialImageIndex={imageIndex}
         onDelete={handleLightboxDelete}
+      />
+      <DeleteConfirmModal
+        opened={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={doBulkDelete}
+        count={selectedIds.size}
       />
     </Box>
   );

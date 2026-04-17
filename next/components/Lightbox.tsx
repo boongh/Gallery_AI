@@ -4,6 +4,7 @@ import {
   Box, Button, Center, CloseButton, Modal,
   ScrollArea, Select, SimpleGrid, Skeleton, Stack, Text,
 } from '@mantine/core';
+import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import { useMediaQuery } from '@mantine/hooks';
 
 export interface ImageData {
@@ -50,6 +51,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [relatedFraction, setRelatedFraction] = useState(0.35);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const dragRef = useRef(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -137,21 +139,17 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
     </Box>
   );
 
-  async function handleDelete() {
+  async function doDelete() {
     if (!activeImage) return;
-    if (!window.confirm('Delete this image?')) return;
-    try {
-      const res = await fetch('/gms/media/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ delete_id: [activeImage.id] }),
-      });
-      if (res.status === 204) {
-        onDelete?.(activeImage.id);
-        onClose();
-      }
-    } catch (err) {
-      console.error('Delete failed:', err);
+    const res = await fetch('/gms/media/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delete_id: [activeImage.id] }),
+    });
+    if (res.status === 204) {
+      setDeleteModalOpen(false);
+      onDelete?.(activeImage.id);
+      onClose();
     }
   }
 
@@ -176,7 +174,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
     <Stack gap="xs" p="md">
       <Text size="xs" tt="uppercase" fw={600} c="dimmed">Actions</Text>
       <Button variant="filled" color="blue" fullWidth justify="flex-start" onClick={handleDownload}>↓ Download</Button>
-      <Button variant="light" color="red" fullWidth justify="flex-start" onClick={handleDelete}>🗑 Delete</Button>
+      <Button variant="light" color="red" fullWidth justify="flex-start" onClick={() => setDeleteModalOpen(true)}>🗑 Delete</Button>
       <Button variant="default" fullWidth justify="flex-start">+ Add to Collection</Button>
       <Text size="xs" tt="uppercase" fw={600} c="dimmed" mt="sm">Tags</Text>
       <Select placeholder="Select tags…" data={[]} />
@@ -255,9 +253,19 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
 
   if (!activeImage) return null;
 
+  const deleteModal = (
+    <DeleteConfirmModal
+      opened={deleteModalOpen}
+      onClose={() => setDeleteModalOpen(false)}
+      onConfirm={doDelete}
+      count={1}
+    />
+  );
+
   // ── Desktop layout ───────────────────────────────────────────────────────────
   if (!isMobile) {
     return (
+      <>
       <Modal
         opened={!!image}
         onClose={onClose}
@@ -311,6 +319,8 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
           {renderSidebarContent()}
         </Box>
       </Modal>
+      {deleteModal}
+      </>
     );
   }
 
@@ -330,7 +340,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
       {/* Image fills the modal */}
       <Center style={{ position: 'absolute', inset: 0 }}>
         <img
-          src={activeImage.original_url}
+          src={activeImage.preview_url || activeImage.original_url}
           alt=""
           style={{
             maxWidth: '100%', maxHeight: '100%',
@@ -402,6 +412,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
       >
         {renderSidebarContent()}
       </Box>
+      {deleteModal}
     </Modal>
   );
 }

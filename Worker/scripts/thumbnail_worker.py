@@ -1,6 +1,3 @@
-import uuid
-
-
 import os;
 import sys;
 import json;
@@ -87,8 +84,11 @@ def main():
             print(f"At {time.time_ns()}")
             print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid)}");
         
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        
         except:
-            print("exception occured in worker callback")
+            print("exception occured in thumbnail callback")
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         
         
     connection = wait_for(connect_to_rabbitmq, "RabbitMQ", timeout=20);
