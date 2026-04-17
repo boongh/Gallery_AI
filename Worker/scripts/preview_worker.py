@@ -1,12 +1,14 @@
 import uuid
 
-
+import pika;
 import os;
 import sys;
 import json;
+import psycopg;
 from psycopg import sql;
 import time;
 import PIL;
+import pika.exceptions;
 import os.path as osp;
 from utils.u_rabbitmq import connect_to_rabbitmq;
 from utils.u_postgres import connect_to_postgres;
@@ -16,7 +18,7 @@ import traceback
 def main():
     
     print("Worker process started, waiting for RabbitMQ...");
-    def generate_thumbnail(image_path, thumbnail_path):
+    def generate_preview(image_path, thumbnail_path):
 
         print("Pillow version: ", PIL.__version__)
         print(image_path, thumbnail_path)
@@ -26,8 +28,7 @@ def main():
 
             image = Image.open(image_path)
 
-            print("4")
-            image.thumbnail((512, 512))
+            image.thumbnail((1024, 1024))
             image = ImageOps.exif_transpose(image)  # Correct orientation based on EXIF data
             image.save(thumbnail_path, format="avif")
 
@@ -36,7 +37,7 @@ def main():
             print(traceback.format_exc(), flush=True)
 
         
-    def update_database_thumbnail(uuid, thumbnail_urlpath) -> bool:
+    def update_database_preview(uuid, thumbnail_urlpath) -> bool:
         try:
             schema = "galleryindex"
             table = "images"
@@ -47,7 +48,7 @@ def main():
 
             query = sql.SQL("""
                 UPDATE {schema}.{table}
-                SET thumbnail_filepath = %s
+                SET preview_filepath = %s
                 WHERE uuid = %s;
             """).format(
                 schema=sql.Identifier(schema),
@@ -60,7 +61,7 @@ def main():
             conn.close()
             return True
         except:
-            print("Exception occured while updating database thumbnail path for uuid ", uuid, ": ", sys.exc_info()[0], flush=True)
+            print("Exception occured while updating database preview path for uuid ", uuid, ": ", sys.exc_info()[0], flush=True)
             print(traceback.format_exc(), flush=True)
             return False
         
@@ -69,23 +70,22 @@ def main():
         try:
             jsonbody = json.loads(body);
             print("Got req for ", jsonbody)
-            
+        
             savepath = jsonbody['original_filepath'];
             
             #Database variables set up
             uuid = jsonbody['uuid'];
             
-            thumbnail_urlpath = jsonbody['thumbnail_url'];
-            thumbnail_path = jsonbody['thumbnail_filepath']
+            preview_path = jsonbody['preview_filepath']
             
-            os.makedirs(osp.dirname(thumbnail_path), exist_ok=True);
+            os.makedirs(osp.dirname(preview_path), exist_ok=True);
             
             print("1")
-            print("Generating thumbnail for ", thumbnail_path)
-            generate_thumbnail(savepath, thumbnail_path)
+            print("Generating preview for ", preview_path)
+            generate_preview(savepath, preview_path)
 
             print(f"At {time.time_ns()}")
-            print(f"Generated thumbnail for {savepath} at {osp.join(thumbnail_path, uuid)}");
+            print(f"Generated preview for {savepath} at {osp.join(preview_path, uuid)}");
         
         except:
             print("exception occured in worker callback")
@@ -96,8 +96,8 @@ def main():
     
     channel = connection.channel()
 
-    channel.queue_declare(queue='thumbnail_generation_queue', durable=True);      
-    channel.basic_consume(queue='thumbnail_generation_queue',
+    channel.queue_declare(queue='preview_generation_queue', durable=True);      
+    channel.basic_consume(queue='preview_generation_queue',
                         auto_ack=False,
                         on_message_callback=workercallback)
 

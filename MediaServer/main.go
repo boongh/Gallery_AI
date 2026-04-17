@@ -79,6 +79,7 @@ func main() {
 		uploadgroup.GET("/suggestions", GET_MediaQueryRelated)
 
 		uploadgroup.POST("/:collection_id", POST_MediaUpload)
+		uploadgroup.POST("/delete", POST_DeleteMedias)
 		uploadgroup.POST("/query", POST_MediaAdvancedQuery)
 	}
 

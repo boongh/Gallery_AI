@@ -9,8 +9,9 @@ import { useMediaQuery } from '@mantine/hooks';
 export interface ImageData {
   id: string;
   format: string;
-  filepath: string;
-  thumbnail_filepath: string;
+  original_url: string;
+  thumbnail_url: string;
+  preview_url: string;
   status: string;
   createdAt: Date;
   uploadedAt: Date;
@@ -21,14 +22,16 @@ interface LightboxProps {
   image: ImageData | null;
   onClose: () => void;
   initialImageIndex: Map<string, ImageData>;
+  onDelete?: (id: string) => void;
 }
 
 function parseImages(raw: any[]): ImageData[] {
   return raw.map(img => ({
     id: img.uuid,
     format: img.format,
-    filepath: img.filepath,
-    thumbnail_filepath: img.thumbnail_filepath,
+    original_url: img.original_url,
+    thumbnail_url: img.thumbnail_url,
+    preview_url: img.preview_url ?? '',
     status: img.status,
     uploadedAt: new Date(img.uploaded_at),
     createdAt: new Date(img.created_at),
@@ -36,7 +39,7 @@ function parseImages(raw: any[]): ImageData[] {
   }));
 }
 
-export default function Lightbox({ image, onClose, initialImageIndex }: LightboxProps) {
+export default function Lightbox({ image, onClose, initialImageIndex, onDelete }: LightboxProps) {
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
   const [activeImage, setActiveImage] = useState<ImageData | null>(image);
@@ -79,7 +82,7 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
         const uuids: string[] = data.map((d: any) => d.id.PointIdOptions.Uuid);
         const missing = uuids.filter(u => !internalIndexRef.current.has(u));
         if (missing.length > 0) {
-          const res = await fetch('/gms/media?want=uuid-filepath-thumbnail_filepath&offset=0&limit=10000').then(r => r.json());
+          const res = await fetch('/gms/media?want=uuid-original_url-thumbnail_url-preview_url&offset=0&limit=10000').then(r => r.json());
           if (cancelled) return;
           const fetched = parseImages(res.content);
           const next = new Map(internalIndexRef.current);
@@ -134,10 +137,28 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
     </Box>
   );
 
+  async function handleDelete() {
+    if (!activeImage) return;
+    if (!window.confirm('Delete this image?')) return;
+    try {
+      const res = await fetch('/gms/media/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_id: [activeImage.id] }),
+      });
+      if (res.status === 204) {
+        onDelete?.(activeImage.id);
+        onClose();
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  }
+
   async function handleDownload() {
     if (!activeImage) return;
     try {
-      const res = await fetch(activeImage.filepath, { credentials: 'include' });
+      const res = await fetch(activeImage.original_url, { credentials: 'include' });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement('a'), {
@@ -155,6 +176,7 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
     <Stack gap="xs" p="md">
       <Text size="xs" tt="uppercase" fw={600} c="dimmed">Actions</Text>
       <Button variant="filled" color="blue" fullWidth justify="flex-start" onClick={handleDownload}>↓ Download</Button>
+      <Button variant="light" color="red" fullWidth justify="flex-start" onClick={handleDelete}>🗑 Delete</Button>
       <Button variant="default" fullWidth justify="flex-start">+ Add to Collection</Button>
       <Text size="xs" tt="uppercase" fw={600} c="dimmed" mt="sm">Tags</Text>
       <Select placeholder="Select tags…" data={[]} />
@@ -190,7 +212,12 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
           >
             {img && (
               <img
-                src={img.thumbnail_filepath || img.filepath}
+                src={img.thumbnail_url || img.preview_url || img.original_url}
+                onError={(e) => {
+                  const el = e.currentTarget;
+                  if (el.src.includes('/thumbnails/')) { el.src = img.preview_url || img.original_url; }
+                  else if (el.src.includes('/previews/')) { el.src = img.original_url; }
+                }}
                 alt=""
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               />
@@ -262,7 +289,7 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
             onClick={onClose}
           />
           <img
-            src={activeImage.filepath}
+            src={activeImage.preview_url || activeImage.original_url}
             alt=""
             style={{
               maxWidth: '100%', maxHeight: '100%',
@@ -303,7 +330,7 @@ export default function Lightbox({ image, onClose, initialImageIndex }: Lightbox
       {/* Image fills the modal */}
       <Center style={{ position: 'absolute', inset: 0 }}>
         <img
-          src={activeImage.filepath}
+          src={activeImage.original_url}
           alt=""
           style={{
             maxWidth: '100%', maxHeight: '100%',

@@ -28,6 +28,23 @@ func GET_MediaID(c *gin.Context) {
 	}
 }
 
+// @Summary		Delete media by ID
+// @Description	Delete one or more images owned by the authenticated user. Only images whose owner_uuid matches the caller are deleted. Returns 204 on success.
+// @Tags			Deletion
+// @Accept			application/json
+// @Param			body	body	mediahandler.DeleteRequest	true	"List of image UUIDs to delete"
+// @Success		204
+// @Failure		400
+// @Failure		500
+// @Router			/media/delete [POST]
+func POST_DeleteMedias(c *gin.Context) {
+	err := mediahandler.DeleteMediaById(c)
+	if err != nil {
+		log.Printf("Failed to delete media:%s", err)
+		c.Status(500)
+	}
+}
+
 // @Summary		Upload images
 // @Description	Upload images via form data in the field "files"
 // @Tags			Creation

@@ -18,3 +18,12 @@ func ListContain[T comparable](inThisList []T, compare T) bool {
 	}
 	return false
 }
+
+func Map[A any, B any](origin []A, operator func(A) B) []B {
+	dst := []B{}
+	for _, v := range origin {
+		dst = append(dst, operator(v))
+	}
+
+	return dst
+}
