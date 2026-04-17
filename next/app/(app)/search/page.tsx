@@ -11,8 +11,9 @@ import { useNavContext, useProfileContext } from '@/app/(app)/layout';
 interface QueryResult {
   id: string;
   score: number;
-  filepath?: string;
-  thumbnail_filepath?: string;
+  original_url?: string;
+  thumbnail_url?: string;
+  preview_url?: string;
   status?: string;
 }
 
@@ -28,8 +29,9 @@ interface QueryResponse {
 function mapResult(result: QueryResult): ImageData {
   return {
     id: result.id,
-    filepath: result.filepath ?? '',
-    thumbnail_filepath: result.thumbnail_filepath ?? '',
+    original_url: result.original_url ?? '',
+    thumbnail_url: result.thumbnail_url ?? '',
+    preview_url: result.preview_url ?? '',
     format: '',
     status: result.status ?? '',
     createdAt: new Date(0),
@@ -120,7 +122,7 @@ export default function SearchPage() {
     }
   }
 
-  const thumbSrc = (img: ImageData) => img.thumbnail_filepath || img.filepath;
+  const thumbSrc = (img: ImageData) => img.thumbnail_url || img.original_url;
 
   return (
     <Box style={{ background: '#0d0d0d', minHeight: '100vh' }}>
@@ -293,6 +295,11 @@ export default function SearchPage() {
                   src={thumbSrc(image)}
                   alt=""
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  onError={(e) => {
+                    const el = e.currentTarget;
+                    if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; }
+                    else if (el.src.includes('/previews/')) { el.src = image.original_url; }
+                  }}
                 />
               </Box>
             ))}

@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   ActionIcon, Box, Button, Center, Collapse, FileInput, Group,
   Loader, Stack, Text, TextInput,
@@ -25,7 +25,7 @@ export default function Home() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [nextUrl, setNextUrl] = useState<string | null>(
-    '/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at'
+    '/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at'
   );
   const [loading, setLoading] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
@@ -33,12 +33,16 @@ export default function Home() {
   const [uploadOpen, { toggle: toggleUpload, close: closeUpload }] = useDisclosure(false);
   const [uploadFiles, setUploadFiles] = useState<File[] | undefined>(undefined);
 
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const parseImages = (raw: any[]): ImageData[] =>
     raw.map(img => ({
       id: img.uuid,
       format: img.format,
-      filepath: img.filepath,
-      thumbnail_filepath: img.thumbnail_filepath,
+      original_url: img.original_url,
+      thumbnail_url: img.thumbnail_url,
+      preview_url: img.preview_url ?? '',
       status: img.status,
       uploadedAt: new Date(img.uploaded_at),
       createdAt: new Date(img.created_at),
@@ -48,8 +52,9 @@ export default function Home() {
   const parseSearchResults = (raw: any[]): ImageData[] =>
     raw.map(r => ({
       id: r.id,
-      filepath: r.filepath ?? '',
-      thumbnail_filepath: r.thumbnail_filepath ?? '',
+      original_url: r.original_url ?? '',
+      thumbnail_url: r.thumbnail_url ?? '',
+      preview_url: r.preview_url ?? '',
       status: r.status ?? '',
       format: '',
       uploadedAt: new Date(0),
@@ -77,7 +82,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadImages('/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at');
+    loadImages('/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at');
   }, [loadImages]);
 
   async function handleSearch() {
@@ -152,8 +157,6 @@ export default function Home() {
         const fileStart = performance.now();
         const formData = new FormData();
         formData.append('files', uploadFiles[i]);
-        // Upload to the user's default collection (collectionId === userUUID).
-        // userUUID is fetched once from GET /gms/auth/me on app load.
         const uploadUrl = userUUID ? `/gms/media/${userUUID}` : '/gms/media/me';
         await fetch(uploadUrl, { method: 'POST', body: formData });
         console.log(`[Upload] File ${i + 1}/${total} (${uploadFiles[i].name}) — ${(performance.now() - fileStart).toFixed(0)}ms`);
@@ -162,7 +165,7 @@ export default function Home() {
       closeUpload();
       setUploadFiles(undefined);
       setLoading(true);
-      await loadImages('/gms/media?offset=0&limit=100&want=uuid-filepath-thumbnail_filepath-created_at-uploaded_at');
+      await loadImages('/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at');
     } catch (err) {
       console.error('Upload error:', err);
     } finally {
@@ -170,9 +173,97 @@ export default function Home() {
     }
   }
 
+  function toggleSelectMode() {
+    setSelectMode(prev => !prev);
+    setSelectedIds(new Set());
+  }
+
+  function toggleImageSelection(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
   const isSearchActive = searchResults !== null;
   const displayedImages = isSearchActive ? searchResults : images;
-  const thumbSrc = (img: ImageData) => img.thumbnail_filepath || img.filepath;
+  const thumbSrc = (img: ImageData) => img.thumbnail_url || img.original_url;
+
+  const allSelected = displayedImages.length > 0 && displayedImages.every(img => selectedIds.has(img.id));
+
+  function handleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayedImages.map(img => img.id)));
+    }
+  }
+
+  async function handleBulkDownload() {
+    for (const id of selectedIds) {
+      const img = imageIndexRef.current.get(id);
+      if (!img) continue;
+      try {
+        const res = await fetch(img.original_url, { credentials: 'include' });
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement('a'), {
+          href: url,
+          download: img.format ? `${img.id}.${img.format}` : img.id,
+        });
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error(`Download failed for ${id}:`, err);
+      }
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (!window.confirm(`Delete ${selectedIds.size} image${selectedIds.size === 1 ? '' : 's'}?`)) return;
+    const ids = [...selectedIds];
+    try {
+      const res = await fetch('/gms/media/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete_id: ids }),
+      });
+      if (res.status === 204) {
+        setImages(prev => prev.filter(img => !selectedIds.has(img.id)));
+        setImageIndex(prev => {
+          const next = new Map(prev);
+          ids.forEach(id => next.delete(id));
+          imageIndexRef.current = next;
+          return next;
+        });
+        if (isSearchActive) {
+          setSearchResults(prev => prev ? prev.filter(img => !selectedIds.has(img.id)) : null);
+        }
+        setSelectedIds(new Set());
+        setSelectMode(false);
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+    }
+  }
+
+  function handleLightboxDelete(id: string) {
+    setImages(prev => prev.filter(img => img.id !== id));
+    setImageIndex(prev => {
+      const next = new Map(prev);
+      next.delete(id);
+      imageIndexRef.current = next;
+      return next;
+    });
+    if (isSearchActive) {
+      setSearchResults(prev => prev ? prev.filter(img => img.id !== id) : null);
+    }
+  }
 
   return (
     <Box style={{ background: '#0d0d0d', minHeight: '100vh' }}>
@@ -245,6 +336,36 @@ export default function Home() {
               Upload
             </Button>
           )}
+          {isMobile ? (
+            <ActionIcon
+              variant={selectMode ? 'filled' : 'default'}
+              size="lg"
+              onClick={toggleSelectMode}
+              aria-label="Toggle selection mode"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="3" y="14" width="7" height="7" rx="1"/>
+                <path d="m14 17 2 2 4-4"/>
+              </svg>
+            </ActionIcon>
+          ) : (
+            <Button
+              variant={selectMode ? 'filled' : 'default'}
+              onClick={toggleSelectMode}
+              leftSection={
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/>
+                  <rect x="14" y="3" width="7" height="7" rx="1"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1"/>
+                  <path d="m14 17 2 2 4-4"/>
+                </svg>
+              }
+            >
+              Select
+            </Button>
+          )}
           <ActionIcon variant="subtle" size="lg" onClick={openProfile} aria-label="Open profile" ml="auto">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4"/>
@@ -253,6 +374,50 @@ export default function Home() {
           </ActionIcon>
         </Group>
       </Box>
+
+      {/* Selection action bar */}
+      {selectMode && (
+        <Box
+          style={{
+            background: 'rgba(20,20,20,0.92)',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            padding: '8px 24px',
+          }}
+        >
+          <Group gap="xs">
+            <Text size="sm" c="dimmed" style={{ minWidth: 80 }}>
+              {selectedIds.size} selected
+            </Text>
+            <Button size="sm" variant="subtle" onClick={handleSelectAll}>
+              {allSelected ? 'Deselect all' : 'Select all'}
+            </Button>
+            <Box style={{ flex: 1 }} />
+            <Button size="sm" variant="default" disabled>
+              Share
+            </Button>
+            <Button size="sm" variant="default" disabled>
+              Move to Collection
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkDownload}
+            >
+              Download
+            </Button>
+            <Button
+              size="sm"
+              variant="light"
+              color="red"
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkDelete}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Box>
+      )}
 
       {/* Upload panel */}
       <Collapse in={uploadOpen}>
@@ -274,6 +439,7 @@ export default function Home() {
               placeholder="Choose images…"
               value={uploadFiles}
               onChange={setUploadFiles}
+              styles={{ input: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
             />
             <Button
               onClick={handleUpload}
@@ -318,34 +484,94 @@ export default function Home() {
               gap: isMobile ? 6 : 8,
             }}
           >
-            {displayedImages.map(image => (
-              <Box
-                key={image.id}
-                onClick={() => setLightboxImage(image)}
-                style={{
-                  aspectRatio: '1',
-                  overflow: 'hidden',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  background: 'var(--mantine-color-dark-6)',
-                  transition: 'transform 0.15s, box-shadow 0.15s',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                }}
-              >
-                <img
-                  src={thumbSrc(image)}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              </Box>
-            ))}
+            {displayedImages.map(image => {
+              const isSelected = selectedIds.has(image.id);
+              return (
+                <Box
+                  key={image.id}
+                  onClick={() => {
+                    if (selectMode) {
+                      toggleImageSelection(image.id);
+                    } else {
+                      setLightboxImage(image);
+                    }
+                  }}
+                  style={{
+                    aspectRatio: '1',
+                    overflow: 'hidden',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    background: 'var(--mantine-color-dark-6)',
+                    position: 'relative',
+                    transition: selectMode ? 'none' : 'transform 0.15s, box-shadow 0.15s',
+                    outline: isSelected ? '2px solid var(--mantine-color-blue-5)' : 'none',
+                    outlineOffset: '-2px',
+                  }}
+                  onMouseEnter={e => {
+                    if (selectMode) return;
+                    (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)';
+                    (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+                  }}
+                  onMouseLeave={e => {
+                    if (selectMode) return;
+                    (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+                    (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                  }}
+                >
+                  <img
+                    src={thumbSrc(image)}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; }
+                      else if (el.src.includes('/previews/')) { el.src = image.original_url; }
+                    }}
+                  />
+                  {isSelected && (
+                    <Box
+                      style={{
+                        position: 'absolute', inset: 0,
+                        background: 'rgba(0,0,0,0.5)',
+                        display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
+                        padding: 6,
+                      }}
+                    >
+                      <Box
+                        style={{
+                          width: 20, height: 20, borderRadius: '50%',
+                          background: 'var(--mantine-color-blue-5)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      </Box>
+                    </Box>
+                  )}
+                  {selectMode && !isSelected && (
+                    <Box
+                      style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
+                        padding: 6,
+                      }}
+                    >
+                      <Box
+                        style={{
+                          width: 20, height: 20, borderRadius: '50%',
+                          border: '2px solid rgba(255,255,255,0.6)',
+                          background: 'rgba(0,0,0,0.3)',
+                          flexShrink: 0,
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         )}
 
@@ -370,6 +596,7 @@ export default function Home() {
         image={lightboxImage}
         onClose={() => setLightboxImage(null)}
         initialImageIndex={imageIndex}
+        onDelete={handleLightboxDelete}
       />
     </Box>
   );

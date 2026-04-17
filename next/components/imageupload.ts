@@ -20,7 +20,7 @@ async function imageuploadhandlerasync(req : any, res : any){
 
     const id = uuidv4(); // corresponds to uuid
     const format = file.mimetype; // matches "format" column
-    const originalfileurl = `images/originals/${id}.${imgmetadata.format}`; // matches "filepath"
+    const originalfileurl = `images/originals/${id}.${imgmetadata.format}`; // matches "original_filepath"
     const thumbnail_filepath = null; // matches "thumbnail_filepath"
     const status = "pending indexing"; // matches "status"
     const created_at = new Date();
@@ -42,7 +42,7 @@ async function imageuploadhandlerasync(req : any, res : any){
 
     // Insert into database
     const result = await gallerydbsql`
-      INSERT INTO galleryindex.images (uuid, format, filepath, thumbnail_filepath, status, created_at, uploaded_at, metadata)
+      INSERT INTO galleryindex.images (uuid, format, original_filepath, thumbnail_filepath, status, created_at, uploaded_at, metadata)
       VALUES (${id}, ${format}, ${originalfileurl}, ${thumbnail_filepath}, ${status}, ${created_at}, ${uploaded_at}, ${gallerydbsql.json(metadata as any)})`;
     
     console.log("Connecting to queue...");

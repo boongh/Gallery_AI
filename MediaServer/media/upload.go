@@ -23,11 +23,14 @@ import (
 
 type msg_type struct {
 	UUID              string `json:"uuid"`
-	FILEURLPATH       string `json:"fileurlpath"`
-	SAVEPATH          string `json:"savepath"`
-	THUMBNAILSAVEPATH string `json:"thumbnailsavepath"`
-	THUMBNAILURLPATH  string `json:"thumbnailurlpath"`
-	COLLECTIONID      string `json:"collection_id"`
+	OWNERUUID         string `json:"owner_uuid"`
+	COLLECTIONUUID    string `json:"collection_uuid"`
+	FILEURLPATH       string `json:"original_url"`
+	SAVEPATH          string `json:"original_filepath"`
+	THUMBNAILURLPATH  string `json:"thumbnail_url"`
+	THUMBNAILSAVEPATH string `json:"thumbnail_filepath"`
+	PREVIEWURL        string `json:"preview_url"`
+	PREVIEWPATH       string `json:"preview_filepath"`
 }
 
 type Server struct {
@@ -74,6 +77,17 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		)
 	}, "", "failed to initialize thumbnail queue", context.Background())
 
+	q_preview := serverutils.FailOnError(func() (amqp.Queue, error) {
+		return serverutils.Rabbitmqchannel.QueueDeclare(
+			"preview_generation_queue", // name
+			true,                       // durable
+			false,                      // delete when unused
+			false,                      // exclusive
+			false,                      // no-wait
+			nil,                        // arguments
+		)
+	}, "", "failed to initialize thumbnail queue", context.Background())
+
 	q_vector := serverutils.FailOnError(func() (amqp.Queue, error) {
 		return serverutils.Rabbitmqchannel.QueueDeclare(
 			"vector_generation_queue", // name
@@ -103,18 +117,22 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 	for _, file := range files {
 
 		image_uuid := uuid.New().String()
-		extension := strings.Split(file.Header.Get("Content-Type"), "/")
+		content_type := file.Header.Get("Content-Type")
+		extension := strings.Split(content_type, "/")
 		fmt.Println(extension)
 
-		saveurl := "gms/media/originals/" + image_uuid
-		thumbnailsaveurl := "gms/media/thumbnails/" + image_uuid
+		original_url := "gms/media/originals/" + image_uuid
+		original_path := path.Join(os.Getenv("APP_DATA"), "media", "originals", image_uuid+"."+extension[1])
 
-		savefilepath := path.Join(os.Getenv("APP_DATA"), "media", "originals", image_uuid)
-		thumbnailsavepath := path.Join(os.Getenv("APP_DATA"), "media", "thumbnails", image_uuid)
+		thumbnail_url := "gms/media/thumbnails/" + image_uuid
+		thumbnail_path := path.Join(os.Getenv("APP_DATA"), "media", "thumbnails", image_uuid)
 
-		fmt.Println("Saving file to:", savefilepath)
+		preview_url := "gms/media/previews/" + image_uuid
+		preview_path := path.Join(os.Getenv("APP_DATA"), "media", "previews", image_uuid)
 
-		err := c.SaveUploadedFile(file, savefilepath, fs.FileMode.Perm(0o755))
+		fmt.Println("Saving file to:", original_path)
+
+		err := c.SaveUploadedFile(file, original_path, fs.FileMode.Perm(0o755))
 
 		if err != nil {
 			return fmt.Errorf("failed to save uploaded file: %s", err)
@@ -126,8 +144,13 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 			image_uuid,
 			userUUID.(string),
 			file.Header.Get("Content-Type"),
-			saveurl,
-			"",
+			original_path,
+			original_url,
+			thumbnail_path,
+			thumbnail_url,
+			preview_path,
+			preview_url,
+			content_type,
 			"pending indexing",
 			time.Now(),
 			time.Now(),
@@ -142,11 +165,14 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 
 		var p msg_type = msg_type{
 			UUID:              image_uuid,
-			FILEURLPATH:       saveurl,
-			SAVEPATH:          savefilepath,
-			THUMBNAILSAVEPATH: thumbnailsavepath,
-			THUMBNAILURLPATH:  thumbnailsaveurl,
-			COLLECTIONID:      userUUID.(string),
+			FILEURLPATH:       original_url,
+			SAVEPATH:          original_path,
+			THUMBNAILSAVEPATH: thumbnail_path,
+			THUMBNAILURLPATH:  thumbnail_url,
+			PREVIEWPATH:       preview_path,
+			PREVIEWURL:        preview_url,
+			OWNERUUID:         userUUID.(string),
+			COLLECTIONUUID:    userUUID.(string),
 
 			// STATUS: "pending thumbnail",
 			// CREATEDAT: time.Now(),
@@ -164,8 +190,13 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		[]string{"uuid",
 			"owner_uuid",
 			"format",
-			"filepath",
+			"original_filepath",
+			"original_url",
 			"thumbnail_filepath",
+			"thumbnail_url",
+			"preview_filepath",
+			"preview_url",
+			"type",
 			"status",
 			"created_at",
 			"uploaded_at",
@@ -209,6 +240,23 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 
 		if chpuberr != nil {
 			return fmt.Errorf("fail to connect to publish to rabbitmq %s", chpuberr)
+		} else {
+			log.Printf("[X] Sent %s RBMQ", jsonpub)
+		}
+
+		//preview generation
+		chpuberr_prev := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+			"",             // exchange
+			q_preview.Name, // routing key
+			false,          // mandatory
+			false,          // immediate
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        jsonpub,
+			})
+
+		if chpuberr_prev != nil {
+			return fmt.Errorf("fail to connect to publish to rabbitmq %s", chpuberr_prev)
 		} else {
 			log.Printf("[X] Sent %s RBMQ", jsonpub)
 		}

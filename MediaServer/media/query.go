@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 )
 
-var ValidMediaAttributes = []string{"uuid", "format", "filepath", "thumbnail_filepath", "status", "created_at", "uploaded_at", "metadata"}
+var ValidMediaAttributes = []string{"uuid", "format", "original_url", "thumbnail_url", "preview_url", "status", "created_at", "uploaded_at", "metadata"}
 
 type MediaQueryParam struct {
 	Offset int    `form:"offset"`
@@ -172,7 +171,7 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 	defer cancel()
 
 	query := `
-		SELECT uuid, owner_uuid 
+		SELECT uuid, owner_uuid, thumbnail_filepath, preview_filepath, original_filepath, type
 		FROM galleryindex.images
 		WHERE uuid = $1`
 
@@ -191,8 +190,12 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 
 	var imageUUID string
 	var ownerUUID string
+	var thumbnailFile string
+	var previewFile string
+	var originalFile string
+	var content_type string
 
-	err = rows.Scan(&imageUUID, &ownerUUID)
+	err = rows.Scan(&imageUUID, &ownerUUID, &thumbnailFile, &previewFile, &originalFile, &content_type)
 
 	if err != nil {
 		log.Fatalf("scan fails %s", err)
@@ -203,11 +206,19 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 		return nil
 	}
 
-	c.Header("X-Accel-Redirect", fmt.Sprintf("/%s/media/%s/%s",
-		os.Getenv("APP_DATA"),
-		typeOfMedia,
-		imageUUID,
-	))
+	switch typeOfMedia {
+	case "thumbnails":
+		c.Header("X-Accel-Redirect", "/"+thumbnailFile)
+		fmt.Println(thumbnailFile)
+	case "previews":
+		c.Header("X-Accel-Redirect", "/"+previewFile)
+		fmt.Println(previewFile)
+	case "originals":
+		c.Header("X-Accel-Redirect", "/"+originalFile)
+		c.Header("Content-Type", content_type)
+		fmt.Println(originalFile)
+	}
+
 	c.Status(200)
 
 	return nil
@@ -267,7 +278,7 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 		rowmap := make(map[string]interface{}, 1)
 
 		for i, v := range newval {
-			if wantattributes[i] == "uuid" {
+			if validattrpassedin[i] == "uuid" {
 				a, ok := v.([16]byte)
 				if !ok {
 					panic(fmt.Sprintf("Type assersion failed. Expected uint8 but got %T", v))
@@ -275,9 +286,9 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 
 				b := a[:]
 				idstr, _ := uuid.FromBytes(b)
-				rowmap[wantattributes[i]] = idstr.String()
+				rowmap[validattrpassedin[i]] = idstr.String()
 			} else {
-				rowmap[wantattributes[i]] = v
+				rowmap[validattrpassedin[i]] = v
 			}
 		}
 

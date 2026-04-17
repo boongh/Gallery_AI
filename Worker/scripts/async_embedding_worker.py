@@ -18,8 +18,8 @@ def embed_image_callback(ch, method, properties, body):
         jsonbody = json.loads(body);
         print("Got req for ", jsonbody)
 
-        urlpath = jsonbody['fileurlpath'];
-        savepath = jsonbody['savepath'];
+        urlpath = jsonbody['original_url'];
+        savepath = jsonbody['original_filepath'];
 
         #Database variables set up
         uuid = jsonbody['uuid'];
@@ -43,9 +43,11 @@ def embed_image_callback(ch, method, properties, body):
                         id=uuid,
                         vector=vector,
                         payload={
-                            "collection_id": jsonbody['collection_id'],
-                            "filepath": urlpath,
-                            "thumbnail_filepath": jsonbody['thumbnailurlpath'],
+                            "owner_uuid": jsonbody['owner_uuid'],
+                            "collection_id": [jsonbody['collection_uuid']],
+                            "thumbnail_url": jsonbody['thumbnail_url'],
+                            "preview_url": jsonbody['preview_url'],
+                            "original_url": urlpath,
                             }
                     )
                 ]
