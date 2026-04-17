@@ -99,6 +99,17 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		)
 	}, "", "failed to initialize vector queue", context.Background())
 
+	q_metadata := serverutils.FailOnError(func() (amqp.Queue, error) {
+		return serverutils.Rabbitmqchannel.QueueDeclare(
+			"metadata_generation_queue", // name
+			true,                        // durable
+			false,                       // delete when unused
+			false,                       // exclusive
+			false,                       // no-wait
+			nil,                         // arguments
+		)
+	}, "", "failed to initialize vector queue", context.Background())
+
 	form := serverutils.FailOnError(func() (*multipart.Form, error) {
 		return c.MultipartForm()
 	}, "successfully parsed form", "fail to parse form", context.Background())
@@ -276,6 +287,23 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 			return fmt.Errorf("fail to connect to publish to rabbitmq vector %s", chpuberr_vec)
 		} else {
 			log.Printf("[X] Sent (to Vector) %s RBMQ ", jsonpub)
+		}
+
+		//metadata generation
+		chpuberr_meta := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+			"",              // exchange
+			q_metadata.Name, // routing key
+			false,           // mandatory
+			false,           // immediate
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        jsonpub,
+			})
+
+		if chpuberr_meta != nil {
+			return fmt.Errorf("fail to connect to publish to rabbitmq metadata %s", chpuberr_vec)
+		} else {
+			log.Printf("[X] Sent (to Metadata) %s RBMQ ", jsonpub)
 		}
 	}
 
