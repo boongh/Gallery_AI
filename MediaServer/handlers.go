@@ -110,21 +110,6 @@ func GET_MediaQueryRelated(c *gin.Context) {
 	}
 }
 
-// @Summary		Create a new collection
-// @Description	Create a new collection entry with a specified name and description
-// @Tags			Creation
-// @Param			collection	body	collection.NewCollection	true	"The collection data to create"
-// @Produce		application/json
-// @Success		200	{object}	collection.NewCollection	//	Example	success	response
-// @Router			/gms/collection [POST]
-func MediaQuerySearch(c *gin.Context) {
-	err := collection.NewCollectionHandler(c)
-	if err != nil {
-		log.Println("Collection Creation Failed:", err)
-		c.Status(500)
-	}
-}
-
 // @Summary		Register a new user
 // @Description	Create a new user account with a username and password. Also creates a default collection for the user. Returns 201 on success.
 // @Tags			Auth
@@ -174,34 +159,120 @@ func GET_AuthMe(c *gin.Context) {
 	AuthHandler.Auth_Get_Me_Handler(c, serverutils.Postgrespool)
 }
 
-// @Summary		Create a new collection
-// @Description	Create a new collection entry with a specified name and description
-// @Tags			Creation
-// @Param			collection	body	collection.NewCollection	true	"The collection data to create"
+const collectionpathroot string = "/gms/collections"
+const ownerpermlevel int16 = 32767
+const basicviewerpermlevel int16 = 10
+const contentviewerpermlevel int16 = 20
+const contenteditorpermlevel int16 = 30
+const inforeditorpermlevel int16 = 40
+
+// @Summary		List available collections
+// @Description	Returns a paginated list of all collections the authenticated user has any level of access to, ordered by creation date descending.
+// @Tags			Query
 // @Produce		application/json
-// @Success		200	{object}	collection.NewCollection	//	Example	success	response
-// @Router			/gms/collection [POST]
-func CollectionCreationHandler(c *gin.Context) {
-	err := collection.NewCollectionHandler(c)
+// @Param			offset	query	int	false	"Number of entries to skip"
+// @Param			limit	query	int	false	"Maximum number of entries to return"
+// @Success		200	{object}	serverutils.PaginatedResponse	"content array of { uuid, created_at, name, description, thumbnail_url }"
+// @Failure		400
+// @Failure		500
+// @Router			/gms/collection [GET]
+func GET_GetAvailCollection(c *gin.Context) {
+	err := collection.GetAvailCollections(c, collectionpathroot)
+	if err != nil {
+		log.Println("Collection Querying Failed:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Create a new collection
+// @Description	Creates a new collection owned by the authenticated user. Returns 201 with the new collection UUID as plain text.
+// @Tags			Creation
+// @Accept			application/json
+// @Produce		text/plain
+// @Param			body	body	collection.NewCollection	true	"Collection name, description, and optional thumbnail UUID"
+// @Success		201
+// @Failure		400
+// @Failure		500
+// @Router			/collection [POST]
+func POST_CreateNewCollection(c *gin.Context) {
+	err := collection.CollectionCreation(c, ownerpermlevel)
 	if err != nil {
 		log.Println("Collection Creation Failed:", err)
 		c.Status(500)
 	}
 }
 
-// @Summary		Query for available collections
-// @Description	Query for all available collections to a specific user by the parameter specified
+// @Summary		Get collection info by ID
+// @Description	Returns full metadata for a single collection the user has access to. Returns 403 if the user lacks permission (requires at least basicviewerpermlevel).
 // @Tags			Query
-// @Param	want query string true "What attributes are wanted in the response"
-// @Param	offset query int false "Offsets from the first response table order"
-// @Param	limit query int false "How many entries is wanted in the response"
-// @Produce		text/plain
-// @Success		200
-// @Router			/gms/collection [GET]
-func CollectionQueryHandler(c *gin.Context) {
-	err := collection.CollectionQuery(c)
+// @Produce		application/json
+// @Param			collection_id	path	string	true	"UUID of the collection"
+// @Success		200	{array}		map[string]interface{}	"Array of collection row maps"
+// @Failure		403
+// @Failure		404
+// @Failure		500
+// @Router			/collection/{collection_id} [GET]
+func GET_GetCollectionByID(c *gin.Context) {
+	err := collection.CollectionInfo(c, basicviewerpermlevel)
 	if err != nil {
-		log.Println("Collection Query Fail:", err)
+		log.Println("Collection Querying Failed:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Delete a collection
+// @Description	Permanently deletes a collection owned by the authenticated user. Requires owner-level permission. Returns 204 on success.
+// @Tags			Deletion
+// @Param			collection_id	path	string	true	"UUID of the collection"
+// @Success		204
+// @Failure		403
+// @Failure		404
+// @Failure		500
+// @Router			/collection/{collection_id} [DELETE]
+func DELETE_CollectionByID(c *gin.Context) {
+	err := collection.CollectionDeletion(c, ownerpermlevel)
+	if err != nil {
+		log.Println("Collection Deletion Failed:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Insert images into a collection
+// @Description	Adds one or more images (by UUID) to an existing collection. The caller must own the images and have content-editor permission on the collection. Returns 201 on success.
+// @Tags			Creation
+// @Accept			application/json
+// @Param			collection_id	path	string								true	"UUID of the collection"
+// @Param			body			body	collection.CollectionUpsertDelFormat	true	"Array of image UUIDs to insert"
+// @Success		201
+// @Failure		400
+// @Failure		403
+// @Failure		500
+// @Router			/collection/{collection_id} [POST]
+func POST_CollectionInsert(c *gin.Context) {
+	err := collection.CollectionContentInsert(c, contenteditorpermlevel)
+	if err != nil {
+		log.Println("Collection Insertion Failed:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Get collection image contents
+// @Description	Returns a paginated list of images belonging to the specified collection, ordered by date added. Supports `want`, `offset`, and `limit` query parameters. The `want` parameter is a dash-separated list of fields (e.g. `uuid-original_url-thumbnail_url-preview_url-created_at`). Requires content-viewer permission on the collection.
+// @Tags			Query
+// @Produce		application/json
+// @Param			collection_id	path	string	true	"UUID of the collection"
+// @Param			want			query	string	false	"Dash-separated list of fields to return (e.g. uuid-original_url-thumbnail_url)"
+// @Param			offset			query	int		false	"Number of entries to skip"
+// @Param			limit			query	int		false	"Maximum number of entries to return"
+// @Success		200	{object}	serverutils.PaginatedResponse	"Paginated content array with optional next URL"
+// @Failure		403
+// @Failure		404
+// @Failure		500
+// @Router			/collection/{collection_id}/contents [GET]
+func GET_GetCollectionContent(c *gin.Context) {
+	err := collection.CollectionContentQuery(c, contentviewerpermlevel, collectionpathroot)
+	if err != nil {
+		log.Println("Collection Querying Failed:", err)
 		c.Status(500)
 	}
 }

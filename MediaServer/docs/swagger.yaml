@@ -9,11 +9,37 @@ definitions:
     - password
     - username
     type: object
+  collection.CollectionUpsertDelFormat:
+    properties:
+      image_uuids:
+        items:
+          type: string
+        type: array
+    type: object
   collection.NewCollection:
     properties:
       description:
         type: string
       name:
+        type: string
+      thumbnail_uuid:
+        type: string
+    type: object
+  mediahandler.DeleteRequest:
+    properties:
+      delete_id:
+        items:
+          type: string
+        type: array
+    type: object
+  serverutils.PaginatedResponse:
+    properties:
+      content:
+        items:
+          additionalProperties: {}
+          type: object
+        type: array
+      next:
         type: string
     type: object
 info:
@@ -43,51 +69,179 @@ paths:
       summary: Get current user info
       tags:
       - Auth
-  /gms/collection:
-    get:
-      description: Query for all available collections to a specific user by the parameter
-        specified
-      parameters:
-      - description: What attributes are wanted in the response
-        in: query
-        name: want
-        required: true
-        type: string
-      - description: Offsets from the first response table order
-        in: query
-        name: offset
-        type: integer
-      - description: How many entries is wanted in the response
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: OK
-      summary: Query for available collections
-      tags:
-      - Query
+  /collection:
     post:
-      description: Create a new collection entry with a specified name and description
+      consumes:
+      - application/json
+      description: Creates a new collection owned by the authenticated user. Returns
+        201 with the new collection UUID as plain text.
       parameters:
-      - description: The collection data to create
+      - description: Collection name, description, and optional thumbnail UUID
         in: body
-        name: collection
+        name: body
         required: true
         schema:
           $ref: '#/definitions/collection.NewCollection'
       produces:
-      - application/json
+      - text/plain
       responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/collection.NewCollection'
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
       summary: Create a new collection
       tags:
       - Creation
+  /collection/{collection_id}:
+    delete:
+      description: Permanently deletes a collection owned by the authenticated user.
+        Requires owner-level permission. Returns 204 on success.
+      parameters:
+      - description: UUID of the collection
+        in: path
+        name: collection_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      summary: Delete a collection
+      tags:
+      - Deletion
+    get:
+      description: Returns full metadata for a single collection the user has access
+        to. Returns 403 if the user lacks permission (requires at least basicviewerpermlevel).
+      parameters:
+      - description: UUID of the collection
+        in: path
+        name: collection_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Array of collection row maps
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      summary: Get collection info by ID
+      tags:
+      - Query
+    post:
+      consumes:
+      - application/json
+      description: Adds one or more images (by UUID) to an existing collection. The
+        caller must own the images and have content-editor permission on the collection.
+        Returns 201 on success.
+      parameters:
+      - description: UUID of the collection
+        in: path
+        name: collection_id
+        required: true
+        type: string
+      - description: Array of image UUIDs to insert
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/collection.CollectionUpsertDelFormat'
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "500":
+          description: Internal Server Error
+      summary: Insert images into a collection
+      tags:
+      - Creation
+  /collection/{collection_id}/contents:
+    get:
+      description: Returns a paginated list of images belonging to the specified collection,
+        ordered by date added. Supports `want`, `offset`, and `limit` query parameters.
+        The `want` parameter is a dash-separated list of fields (e.g. `uuid-original_url-thumbnail_url-preview_url-created_at`).
+        Requires content-viewer permission on the collection.
+      parameters:
+      - description: UUID of the collection
+        in: path
+        name: collection_id
+        required: true
+        type: string
+      - description: Dash-separated list of fields to return (e.g. uuid-original_url-thumbnail_url)
+        in: query
+        name: want
+        type: string
+      - description: Number of entries to skip
+        in: query
+        name: offset
+        type: integer
+      - description: Maximum number of entries to return
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated content array with optional next URL
+          schema:
+            $ref: '#/definitions/serverutils.PaginatedResponse'
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+      summary: Get collection image contents
+      tags:
+      - Query
+  /gms/collection:
+    get:
+      description: Returns a paginated list of all collections the authenticated user
+        has any level of access to, ordered by creation date descending.
+      parameters:
+      - description: Number of entries to skip
+        in: query
+        name: offset
+        type: integer
+      - description: Maximum number of entries to return
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: content array of { uuid, created_at, name, description, thumbnail_url
+            }
+          schema:
+            $ref: '#/definitions/serverutils.PaginatedResponse'
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      summary: List available collections
+      tags:
+      - Query
   /gms/media:
     get:
       description: Query for media available to a user
@@ -223,6 +377,29 @@ paths:
       summary: Log in
       tags:
       - Auth
+  /media/delete:
+    post:
+      consumes:
+      - application/json
+      description: Delete one or more images owned by the authenticated user. Only
+        images whose owner_uuid matches the caller are deleted. Returns 204 on success.
+      parameters:
+      - description: List of image UUIDs to delete
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/mediahandler.DeleteRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      summary: Delete media by ID
+      tags:
+      - Deletion
   /signup:
     post:
       consumes:

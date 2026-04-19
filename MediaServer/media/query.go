@@ -11,16 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/gin-gonic/gin"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/qdrant/go-client/qdrant"
 )
-
-var ValidMediaAttributes = []string{"uuid", "format", "original_url", "thumbnail_url", "preview_url", "status", "created_at", "uploaded_at", "metadata"}
 
 type MediaQueryParam struct {
 	Offset int    `form:"offset"`
@@ -32,10 +28,7 @@ type SuggestionQueryParam struct {
 	UUID         string `form:"uuid"`
 	collectionID string `form:"collection_id"`
 }
-type PaginatedResponse struct {
-	Content []map[string]interface{} `json:"content"`
-	Next    string                   `json:"next,omitempty"`
-}
+
 type MediaAdvancedQueryParam struct {
 	Offset  uint64 `json:"offset"`
 	Limit   uint64 `json:"limit"`
@@ -57,7 +50,7 @@ type MediaAdvancedQueryResponse struct {
 
 type AdvancedQueryPaginatedResponse struct {
 	Content []map[string]any         `json:"content"`
-	elapsed int64                    `json:"elapsed_time"`
+	Elapsed int64                    `json:"elapsed_time"`
 	Next    *MediaAdvancedQueryParam `json:"next,omitempty"`
 }
 
@@ -225,6 +218,7 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 }
 
 func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
+
 	var idtemp any
 	var useruuid string
 	var exists bool
@@ -246,18 +240,28 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 	var wantattributes []string = strings.Split(param.Want, "-")
 
 	validattrpassedin := serverutils.Filter(wantattributes, func(str string) bool {
-		return serverutils.ListContain(ValidMediaAttributes, str)
+		return serverutils.ListContain(serverutils.ValidMediaAttributes, str)
 	})
 
-	selectstatement := serverutils.BuildSQL(ValidMediaAttributes, validattrpassedin)
+	//Special mapping for uuid to return as text instead
+	validattrpassedin = serverutils.Map(validattrpassedin, func(attr string) string {
+		attrnamemap := map[string]string{
+			"uuid": "uuid::text",
+		}
+		if val, ok := attrnamemap[attr]; ok {
+			return val
+		}
+		return attr
+	})
+
+	selectstatement := serverutils.BuildSQL(serverutils.ValidMediaAttributes, validattrpassedin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := fmt.Sprintf(`
-		SELECT %s FROM collections.collection_images
-		INNER JOIN galleryindex.images ON collections.collection_images.image_uuid = galleryindex.images.uuid
-		WHERE collections.collection_images.collection_uuid = $3
+		SELECT %s FROM galleryindex.images
+		WHERE owner_uuid= $3
 		ORDER BY uploaded_at DESC
 		LIMIT $2
 		OFFSET $1
@@ -270,29 +274,10 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 		log.Fatalf("query fails %s", err)
 	}
 
-	var qresult []map[string]interface{}
-	for rows.Next() {
-		newval, _ := rows.Values()
+	qresult, err := pgx.CollectRows(rows, pgx.RowToMap)
 
-		//Json construction
-		rowmap := make(map[string]interface{}, 1)
-
-		for i, v := range newval {
-			if validattrpassedin[i] == "uuid" {
-				a, ok := v.([16]byte)
-				if !ok {
-					panic(fmt.Sprintf("Type assersion failed. Expected uint8 but got %T", v))
-				}
-
-				b := a[:]
-				idstr, _ := uuid.FromBytes(b)
-				rowmap[validattrpassedin[i]] = idstr.String()
-			} else {
-				rowmap[validattrpassedin[i]] = v
-			}
-		}
-
-		qresult = append(qresult, rowmap)
+	if err != nil {
+		log.Fatalf("query parse fails %s", err)
 	}
 
 	var nextURL string
@@ -300,7 +285,7 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 		nextURL = fmt.Sprintf("/gms/media?offset=%d&limit=%d&want=%s", param.Offset+param.Limit, param.Limit, param.Want)
 	}
 
-	c.JSON(200, PaginatedResponse{
+	c.JSON(200, serverutils.PaginatedResponse{
 		Content: qresult,
 		Next:    nextURL,
 	})
@@ -502,7 +487,7 @@ func AdvancedMediaQuery(c *gin.Context) error {
 	var elapsed = time.Since(start).Milliseconds()
 	c.JSON(200, AdvancedQueryPaginatedResponse{
 		Content: results,
-		elapsed: elapsed, // placeholder for elapsed time
+		Elapsed: elapsed, // placeholder for elapsed time
 		Next:    nextQuery,
 	})
 

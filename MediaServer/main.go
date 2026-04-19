@@ -1,7 +1,9 @@
 package main
 
 import (
+	"MediaServer/collection"
 	"MediaServer/serverutils"
+
 	// "fmt"
 	AuthHandler "MediaServer/auth"
 	"log"
@@ -85,8 +87,18 @@ func main() {
 
 	{
 		colgroup := protected.Group("/collection")
-		colgroup.GET("", CollectionQueryHandler)
-		colgroup.POST("", CollectionCreationHandler)
+		colgroup.GET("", GET_GetAvailCollection)
+		colgroup.POST("", POST_CreateNewCollection)
+		{
+
+			colIDgroup := colgroup.Group("/:collection_id")
+			colIDgroup.Use(collection.CollectionPermCheckMiddleware())
+
+			colIDgroup.GET("", GET_GetCollectionByID)
+			colIDgroup.DELETE("", DELETE_CollectionByID)
+			colIDgroup.POST("", POST_CollectionInsert)
+			colIDgroup.GET("/contents", GET_GetCollectionContent)
+		}
 	}
 
 	server.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

@@ -51,7 +51,7 @@ CREATE TABLE collections.collection_data (
     created_at TIMESTAMP DEFAULT now(),
     name TEXT NOT NULL,
     description TEXT,
-    thumbnail_filepath TEXT,
+    thumbnail_image_uuid UUID,
     metadata JSONB
 );
 
@@ -60,6 +60,13 @@ CREATE TABLE collections.collection_images (
     image_uuid UUID REFERENCES galleryindex.images(uuid) ON DELETE CASCADE,
     added_at TIMESTAMP DEFAULT now(),
     PRIMARY KEY (collection_uuid, image_uuid)
+);
+
+CREATE TABLE collections.collection_userperms (
+    collection_uuid UUID REFERENCES collections.collection_data(uuid) ON DELETE CASCADE,
+    user_uuid UUID REFERENCES users.credentials(uuid) ON DELETE CASCADE,
+    permission SMALLINT,
+    PRIMARY KEY (collection_uuid, user_uuid)
 );
 
 CREATE TABLE system.metrics(

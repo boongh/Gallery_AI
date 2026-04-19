@@ -7,6 +7,7 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
+import AddToCollectionModal from '@/components/AddToCollectionModal';
 import { useUser, useNavContext, useProfileContext } from './layout';
 
 type DayGroup = { year: number; month: number; day: number; images: ImageData[] };
@@ -55,6 +56,7 @@ export default function Home() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [addToCollectionOpen, setAddToCollectionOpen] = useState(false);
 
   const parseImages = (raw: any[]): ImageData[] =>
     raw.map(img => ({
@@ -395,7 +397,9 @@ export default function Home() {
       {selectMode && (
         <Box
           style={{
-            background: 'rgba(20,20,20,0.92)',
+            position: 'sticky', top: 62, zIndex: 19,
+            background: 'rgba(13,13,13,0.92)',
+            backdropFilter: 'blur(12px)',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             padding: '8px 24px',
           }}
@@ -411,8 +415,8 @@ export default function Home() {
             <Button size="sm" variant="default" disabled>
               Share
             </Button>
-            <Button size="sm" variant="default" disabled>
-              Move to Collection
+            <Button size="sm" variant="default" disabled={selectedIds.size === 0} onClick={() => setAddToCollectionOpen(true)}>
+              Add to Collection
             </Button>
             <Button
               size="sm"
@@ -624,6 +628,11 @@ export default function Home() {
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={doBulkDelete}
         count={selectedIds.size}
+      />
+      <AddToCollectionModal
+        opened={addToCollectionOpen}
+        onClose={() => setAddToCollectionOpen(false)}
+        selectedIds={selectedIds}
       />
     </Box>
   );

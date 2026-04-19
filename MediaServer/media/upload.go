@@ -132,13 +132,13 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		extension := strings.Split(content_type, "/")
 		fmt.Println(extension)
 
-		original_url := "gms/media/originals/" + image_uuid
+		original_url := "/gms/media/originals/" + image_uuid
 		original_path := path.Join(os.Getenv("APP_DATA"), "media", "originals", image_uuid+"."+extension[1])
 
-		thumbnail_url := "gms/media/thumbnails/" + image_uuid
+		thumbnail_url := "/gms/media/thumbnails/" + image_uuid
 		thumbnail_path := path.Join(os.Getenv("APP_DATA"), "media", "thumbnails", image_uuid)
 
-		preview_url := "gms/media/previews/" + image_uuid
+		preview_url := "/gms/media/previews/" + image_uuid
 		preview_path := path.Join(os.Getenv("APP_DATA"), "media", "previews", image_uuid)
 
 		fmt.Println("Saving file to:", original_path)
