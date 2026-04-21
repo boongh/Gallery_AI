@@ -1,20 +1,33 @@
 'use client';
 import { use, useEffect, useState, type ReactElement } from 'react';
 import {
-  ActionIcon, Box, Button, Center, Group, Loader, Stack, Text,
+  ActionIcon, Box, Button, Center, Group, Loader, Modal, Stack, Text, Textarea, TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIntersection, useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
+import { Pencil, Share2 } from 'lucide-react';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
 import { useNavContext } from '@/app/(app)/layout';
 
 type DayGroup = { year: number; month: number; day: number; images: ImageData[] };
 
+interface CollectionInfo {
+  uuid: string;
+  name: string;
+  description: string;
+  thumbnail_url: string | null;
+  created_at: string;
+}
+
+function getInitials(name: string): string {
+  return name.trim().slice(0, 2).toUpperCase() || '?';
+}
+
 function groupImagesByDate(images: ImageData[]): DayGroup[] {
   const map = new Map<string, ImageData[]>();
   for (const img of images) {
     const d = img.createdAt;
-    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(img);
   }
@@ -32,12 +45,21 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
   const router = useRouter();
   const { openNav } = useNavContext();
 
-  const [collectionName, setCollectionName] = useState<string>('');
+  const [collection, setCollection] = useState<CollectionInfo | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
   const [imageIndex, setImageIndex] = useState<Map<string, ImageData>>(new Map());
   const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lightboxImage, setLightboxImage] = useState<ImageData | null>(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+
+  // Sentinel-based intersection observer — fires when the top of the name text
+  // passes behind the sticky header (48px rootMargin accounts for header height)
+  const { ref: sentinelRef, entry } = useIntersection({ threshold: 0, rootMargin: '-48px 0px 0px 0px' });
+  const bannerNameVisible = entry?.isIntersecting ?? true;
 
   function toAbsolute(url: string | undefined): string {
     if (!url) return '';
@@ -79,7 +101,18 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
   useEffect(() => {
     fetch(`/gms/collection/${id}`)
       .then(r => r.json())
-      .then((data: any[]) => { if (data && data.length > 0) setCollectionName(data[0].name ?? ''); })
+      .then((data: any[]) => {
+        if (data && data.length > 0) {
+          const d = data[0];
+          setCollection({
+            uuid: d.uuid ?? id,
+            name: d.name ?? '',
+            description: d.description ?? '',
+            thumbnail_url: d.thumbnail_url ? toAbsolute(d.thumbnail_url) : null,
+            created_at: d.created_at ?? '',
+          });
+        }
+      })
       .catch(err => console.error('Error fetching collection info:', err));
 
     loadContents(`/gms/collection/${id}/contents?want=uuid-original_url-thumbnail_url-preview_url-created_at&offset=0&limit=100`);
@@ -88,13 +121,14 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
   const groups = groupImagesByDate(images);
 
   return (
-    <Box style={{ background: '#0d0d0d', minHeight: '100vh' }}>
+    <Box style={{ background: 'var(--gb-bg)', minHeight: '100vh' }}>
+      {/* Sticky top bar */}
       <Box
         style={{
           position: 'sticky', top: 0, zIndex: 20,
-          background: 'rgba(13,13,13,0.85)',
+          background: 'var(--gb-header-bg)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--gb-border-mid)',
           padding: isMobile ? '12px 16px' : '12px 24px',
         }}
       >
@@ -118,17 +152,104 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
           </ActionIcon>
-          <Text fw={600} size="lg" style={{ flex: 1 }}>
-            {collectionName || 'Collection'}
+          {/* Collection name fades in when banner sentinel scrolls behind the sticky header */}
+          <Text
+            fw={600}
+            size="lg"
+            style={{
+              flex: 1,
+              opacity: bannerNameVisible ? 0 : 1,
+              transition: 'opacity 0.15s',
+            }}
+          >
+            {collection?.name ?? ''}
           </Text>
         </Group>
       </Box>
 
+      {/* Banner — NOT sticky, no ref needed here */}
+      <Box
+        style={{
+          padding: isMobile ? '16px 12px' : '20px 24px',
+          borderBottom: '1px solid var(--gb-border-mid)',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 16,
+        }}
+      >
+        {/* Thumbnail */}
+        {collection?.thumbnail_url ? (
+          <img
+            src={collection.thumbnail_url}
+            alt=""
+            style={{
+              width: 100, height: 100,
+              borderRadius: 8,
+              objectFit: 'cover',
+              flexShrink: 0,
+              display: 'block',
+            }}
+          />
+        ) : (
+          <Box
+            style={{
+              width: 100, height: 100,
+              borderRadius: 8,
+              background: 'var(--gb-card-bg-raised)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--gb-text-tertiary)' }}>
+              {getInitials(collection?.name ?? '')}
+            </span>
+          </Box>
+        )}
+
+        {/* Info column */}
+        <Box style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+          <div ref={sentinelRef} style={{ height: 0 }} />
+          <Text fw={700} size="xl">{collection?.name ?? ''}</Text>
+          {collection?.description && (
+            <Text
+              size="sm"
+              c="dimmed"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {collection.description}
+            </Text>
+          )}
+        </Box>
+
+        {/* Edit button — absolute bottom-right */}
+        <ActionIcon
+          variant="subtle"
+          size="md"
+          aria-label="Edit collection"
+          style={{ position: 'absolute', bottom: 12, right: 12 }}
+          onClick={() => {
+            setEditName(collection?.name ?? '');
+            setEditDesc(collection?.description ?? '');
+            setEditOpen(true);
+          }}
+        >
+          <Pencil size={16} />
+        </ActionIcon>
+      </Box>
+
+      {/* Image grid */}
       <Box p={isMobile ? 12 : 24}>
         {loading ? (
-          <Center h={200}>
-            <Loader />
-          </Center>
+          <Center h={200}><Loader /></Center>
         ) : images.length === 0 ? (
           <Center h={200}>
             <Stack align="center" gap="xs">
@@ -170,10 +291,10 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
                       onClick={() => setLightboxImage(image)}
                       style={{
                         aspectRatio: '1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer',
-                        background: 'var(--mantine-color-dark-6)',
+                        background: 'var(--gb-card-bg)',
                         transition: 'transform 0.15s, box-shadow 0.15s',
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)'; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                     >
                       <img
@@ -205,6 +326,73 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
         onClose={() => setLightboxImage(null)}
         initialImageIndex={imageIndex}
       />
+
+      {/* Edit collection modal */}
+      <Modal
+        opened={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Collection"
+        centered
+        size="sm"
+        styles={{
+          content: { background: 'var(--gb-modal-bg)' },
+          header: { background: 'var(--gb-modal-bg)' },
+        }}
+      >
+        <Stack gap="sm">
+          <TextInput
+            label="Name"
+            value={editName}
+            onChange={e => setEditName(e.currentTarget.value)}
+          />
+          <Textarea
+            label="Description"
+            rows={3}
+            value={editDesc}
+            onChange={e => setEditDesc(e.currentTarget.value)}
+          />
+
+          {/* Thumbnail row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {collection?.thumbnail_url ? (
+              <img
+                src={collection.thumbnail_url}
+                alt=""
+                style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', display: 'block', flexShrink: 0 }}
+              />
+            ) : (
+              <Box
+                style={{
+                  width: 60, height: 60,
+                  borderRadius: 8,
+                  background: 'var(--gb-card-bg-raised)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--gb-text-tertiary)' }}>
+                  {getInitials(editName)}
+                </span>
+              </Box>
+            )}
+            <Button variant="subtle" size="sm" style={{ paddingLeft: 4 }}>
+              Select new thumbnail
+            </Button>
+          </div>
+
+          {/* Edit access */}
+          <Button variant="default" fullWidth leftSection={<Share2 size={15} />}>
+            Edit access
+          </Button>
+
+          <Group justify="flex-end" mt="xs">
+            <Button variant="subtle" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="default" onClick={() => setEditOpen(false)}>Save</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }

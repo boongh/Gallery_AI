@@ -43,7 +43,7 @@ export default function CollectionInfoPage({ params }: { params: Promise<{ id: s
   }, [loading]);
 
   return (
-    <Box style={{ background: '#0d0d0d', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 16px' }}>
+    <Box style={{ background: 'var(--gb-bg)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 16px' }}>
       <Box style={{ width: '100%', maxWidth: 420, marginBottom: 16 }}>
         <Button
           variant="subtle"
@@ -75,10 +75,10 @@ export default function CollectionInfoPage({ params }: { params: Promise<{ id: s
           style={{
             width: '100%',
             maxWidth: 420,
-            background: 'var(--mantine-color-dark-6)',
+            background: 'var(--gb-card-bg)',
             borderRadius: 16,
             overflow: 'hidden',
-            boxShadow: '0 0 0 1px rgba(255,255,255,0.1), 0 8px 32px rgba(0,0,0,0.6)',
+            boxShadow: '0 0 0 1px var(--gb-inset-border), 0 8px 32px rgba(0,0,0,0.6)',
             transform: visible ? 'translateX(0)' : 'translateX(48px)',
             opacity: visible ? 1 : 0,
             transition: 'transform 0.3s ease, opacity 0.3s ease',
@@ -95,10 +95,10 @@ export default function CollectionInfoPage({ params }: { params: Promise<{ id: s
               ) : (
                 <Box style={{
                   width: '100%', height: '100%',
-                  background: 'var(--mantine-color-dark-4)',
+                  background: 'var(--gb-card-bg-raised)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Text style={{ fontSize: 48, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
+                  <Text style={{ fontSize: 48, fontWeight: 700, color: 'var(--gb-text-tertiary)' }}>
                     {getInitials(collection.name)}
                   </Text>
                 </Box>

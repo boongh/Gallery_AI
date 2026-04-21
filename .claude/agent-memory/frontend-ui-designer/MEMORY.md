@@ -1,1 +1,2 @@
 - [Gallery AI frontend conventions](project_conventions.md) — dark theme, inline styles, Mantine components, grid layout, ImageData type, SidebarNav order
+- [CSS variable theming system](css_variables.md) — gb- prefixed tokens in globals.css, switch on data-mantine-color-scheme, applied across all app files

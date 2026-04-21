@@ -131,11 +131,11 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
       style={{
         height: 8, flexShrink: 0, cursor: 'row-resize',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--mantine-color-dark-5)',
+        background: 'var(--gb-drag-handle)',
         userSelect: 'none',
       }}
     >
-      <Box style={{ width: 32, height: 3, borderRadius: 2, background: 'var(--mantine-color-dark-3)' }} />
+      <Box style={{ width: 32, height: 3, borderRadius: 2, background: 'var(--gb-drag-pip)' }} />
     </Box>
   );
 
@@ -201,7 +201,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
             onClick={() => { if (img) setActiveImage(img); }}
             style={{
               aspectRatio: '1', borderRadius: 6, overflow: 'hidden',
-              background: 'var(--mantine-color-dark-6)',
+              background: 'var(--gb-card-bg)',
               cursor: img ? 'pointer' : 'default',
               transition: 'opacity 0.15s',
             }}
@@ -278,7 +278,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
           content: {
             height: '90vh',
             overflow: 'hidden',
-            background: 'var(--mantine-color-dark-7)',
+            background: 'var(--gb-modal-bg)',
           },
           body: {
             height: '100%',
@@ -310,7 +310,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
         <Box
           w={280}
           style={{
-            borderLeft: '1px solid var(--mantine-color-dark-4)',
+            borderLeft: '1px solid var(--gb-card-bg-raised)',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -370,12 +370,12 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
             position: 'absolute', right: 0, top: '50%',
             transform: 'translateY(-50%)',
             zIndex: 300,
-            background: 'var(--mantine-color-dark-6)',
+            background: 'var(--gb-card-bg)',
             borderRadius: '6px 0 0 6px',
             padding: '12px 6px',
             cursor: 'pointer',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-            border: '1px solid var(--mantine-color-dark-4)',
+            border: '1px solid var(--gb-card-bg-raised)',
             borderRight: 'none',
           }}
         >
@@ -392,7 +392,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
       {sidebarOpen && (
         <Box
           onClick={() => setSidebarOpen(false)}
-          style={{ position: 'absolute', inset: 0, zIndex: 290, background: 'rgba(0,0,0,0.5)' }}
+          style={{ position: 'absolute', inset: 0, zIndex: 290, background: 'var(--gb-backdrop)' }}
         />
       )}
 
@@ -401,11 +401,11 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
         style={{
           position: 'absolute', top: 0, right: 0, height: '100%',
           width: 'min(280px, 85vw)',
-          background: 'var(--mantine-color-dark-7)',
+          background: 'var(--gb-modal-bg)',
           zIndex: 300,
           transform: sidebarOpen ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.25s ease',
-          boxShadow: '-4px 0 20px rgba(0,0,0,0.5)',
+          boxShadow: 'var(--gb-shadow-panel)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}

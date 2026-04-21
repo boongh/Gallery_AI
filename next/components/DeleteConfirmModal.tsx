@@ -44,7 +44,7 @@ export default function DeleteConfirmModal({ opened, onClose, onConfirm, count }
       size="sm"
       radius="md"
       styles={{
-        content: { background: 'var(--mantine-color-dark-7)' },
+        content: { background: 'var(--gb-modal-bg)' },
         body: { padding: '28px 24px 24px' },
       }}
     >

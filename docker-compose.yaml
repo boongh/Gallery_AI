@@ -54,6 +54,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      qdrantdb:
+        condition: service_started
 
   messagequeue:
     image: rabbitmq:management-alpine
@@ -160,6 +162,12 @@ services:
       qdrantdb:
         condition: service_started
     restart: on-failure
+    
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
 
 volumes:

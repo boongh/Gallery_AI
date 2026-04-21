@@ -1,8 +1,9 @@
 'use client';
 import React from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { Box } from '@mantine/core';
+import { Box, useMantineColorScheme } from '@mantine/core';
 import { useRouter } from 'next/navigation';
+import { Moon, Sun } from 'lucide-react';
 import { useUser, useProfileContext } from '@/app/(app)/layout';
 
 function PersonIcon({ size = 18 }: { size?: number }) {
@@ -22,8 +23,8 @@ function AvatarPlaceholder({ username }: { username: string | null }) {
         width: 64,
         height: 64,
         borderRadius: '50%',
-        background: 'rgba(255,255,255,0.08)',
-        border: '1px solid rgba(255,255,255,0.12)',
+        background: 'var(--gb-border-mid)',
+        border: '1px solid var(--gb-border-strong)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -31,7 +32,7 @@ function AvatarPlaceholder({ username }: { username: string | null }) {
       }}
     >
       {username ? (
-        <span style={{ fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--gb-text-secondary)' }}>
           {initials}
         </span>
       ) : (
@@ -50,6 +51,7 @@ function formatMemberSince(createdAt: string | null): string {
 
 function ProfilePanelContent() {
   const { userUUID, username, createdAt, loading } = useUser();
+  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const router = useRouter();
 
   async function handleLogout() {
@@ -60,18 +62,18 @@ function ProfilePanelContent() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
-      <div style={{ padding: '0 20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ padding: '0 20px 24px', borderBottom: '1px solid var(--gb-border)' }}>
         <div style={{
           fontSize: 11,
           fontWeight: 600,
           letterSpacing: '0.1em',
-          color: 'rgba(255,255,255,0.3)',
+          color: 'var(--gb-text-muted)',
           textTransform: 'uppercase',
           marginBottom: 4,
         }}>
           Gallery AI
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#e8e8e8', lineHeight: 1.2 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gb-text-primary)', lineHeight: 1.2 }}>
           Profile
         </div>
       </div>
@@ -82,12 +84,12 @@ function ProfilePanelContent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {/* Username */}
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#e8e8e8' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gb-text-primary)' }}>
             {loading ? '—' : (username ?? '—')}
           </div>
 
           {/* Member since */}
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+          <div style={{ fontSize: 13, color: 'var(--gb-text-tertiary)' }}>
             {loading ? '—' : formatMemberSince(createdAt)}
           </div>
 
@@ -95,7 +97,7 @@ function ProfilePanelContent() {
           <div style={{
             marginTop: 8,
             fontSize: 11,
-            color: 'rgba(255,255,255,0.4)',
+            color: 'var(--gb-text-dimmed)',
             fontFamily: 'monospace',
             wordBreak: 'break-all',
           }}>
@@ -104,19 +106,42 @@ function ProfilePanelContent() {
         </div>
       </div>
 
-      {/* Logout — pinned to bottom */}
-      <div style={{ padding: '12px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: 'auto' }}>
-        <button onClick={handleLogout} style={{
+      {/* Bottom actions — pinned to bottom */}
+      <div style={{ padding: '12px 12px', borderTop: '1px solid var(--gb-border)', marginTop: 'auto' }}>
+        {/* Dark mode toggle */}
+        <button
+          onClick={toggleColorScheme}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            width: '100%',
+            padding: '9px 12px', borderRadius: 8,
+            color: 'var(--gb-text-tertiary)', background: 'transparent',
+            border: 'none', cursor: 'pointer',
+            fontSize: 14, fontWeight: 500,
+            transition: 'background 0.15s, color 0.15s',
+            marginBottom: 8,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--gb-hover-bg)'; e.currentTarget.style.color = 'var(--gb-text-primary)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--gb-text-tertiary)'; }}
+        >
+          <span style={{ opacity: 0.6 }}>
+            {colorScheme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </span>
+          {colorScheme === 'dark' ? 'Light mode' : 'Dark mode'}
+        </button>
+
+        <button onClick={handleLogout}
+         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           width: '100%',
           padding: '9px 12px', borderRadius: 8,
-          color: 'rgba(255,255,255,0.5)', background: 'transparent',
+          color: 'var(--gb-text-tertiary)', background: 'transparent',
           border: 'none', cursor: 'pointer',
           fontSize: 14, fontWeight: 500,
           transition: 'background 0.15s, color 0.15s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}>
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--gb-hover-bg)'; e.currentTarget.style.color = 'var(--gb-text-primary)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--gb-text-tertiary)'; }}>
           <span style={{ opacity: 0.6 }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -147,7 +172,7 @@ export default function ProfileSidebar() {
             position: 'fixed',
             inset: 0,
             zIndex: 55,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'var(--gb-backdrop)',
           }}
         />
       )}
@@ -163,8 +188,8 @@ export default function ProfileSidebar() {
           zIndex: 60,
           transform: open ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.25s ease',
-          background: 'rgba(20,20,20,0.98)',
-          borderLeft: '1px solid rgba(255,255,255,0.07)',
+          background: 'var(--gb-panel-bg)',
+          borderLeft: '1px solid var(--gb-border)',
           display: 'flex',
           flexDirection: 'column',
           padding: '24px 0',

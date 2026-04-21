@@ -111,8 +111,8 @@ export default function AddToCollectionModal({ opened, onClose, selectedIds }: A
       centered
       size="md"
       styles={{
-        content: { background: 'var(--mantine-color-dark-7)' },
-        header: { background: 'var(--mantine-color-dark-7)' },
+        content: { background: 'var(--gb-modal-bg)' },
+        header: { background: 'var(--gb-modal-bg)' },
       }}
     >
       {loadingCollections ? (
@@ -133,7 +133,7 @@ export default function AddToCollectionModal({ opened, onClose, selectedIds }: A
                     padding: 10, borderRadius: 8, cursor: 'pointer',
                     transition: 'background 0.1s',
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--mantine-color-dark-5)'; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--gb-drag-handle)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                   onClick={() => addingTo === null && addToCollection(col.uuid)}
                 >
@@ -147,10 +147,10 @@ export default function AddToCollectionModal({ opened, onClose, selectedIds }: A
                     ) : (
                       <Box style={{
                         width: '100%', height: '100%',
-                        background: 'var(--mantine-color-dark-4)',
+                        background: 'var(--gb-card-bg-raised)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <Text style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
+                        <Text style={{ fontSize: 12, fontWeight: 700, color: 'var(--gb-text-tertiary)' }}>
                           {getInitials(col.name)}
                         </Text>
                       </Box>
@@ -168,7 +168,7 @@ export default function AddToCollectionModal({ opened, onClose, selectedIds }: A
           )}
 
           {showCreateForm ? (
-            <Box mt={12} style={{ borderTop: '1px solid var(--mantine-color-dark-4)', paddingTop: 12 }}>
+            <Box mt={12} style={{ borderTop: '1px solid var(--gb-card-bg-raised)', paddingTop: 12 }}>
               <Stack gap="sm">
                 <TextInput
                   label="Collection name"

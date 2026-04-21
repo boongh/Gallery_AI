@@ -88,13 +88,13 @@ export default function CollectionPage() {
   }
 
   return (
-    <Box style={{ background: '#0d0d0d', minHeight: '100vh' }}>
+    <Box style={{ background: 'var(--gb-bg)', minHeight: '100vh' }}>
       <Box
         style={{
           position: 'sticky', top: 0, zIndex: 20,
-          background: 'rgba(13,13,13,0.85)',
+          background: 'var(--gb-header-bg)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--gb-border-mid)',
           padding: isMobile ? '12px 16px' : '12px 24px',
         }}
       >
@@ -157,7 +157,7 @@ export default function CollectionPage() {
               <Box
                 key={col.uuid}
                 style={{
-                  background: 'var(--mantine-color-dark-6)',
+                  background: 'var(--gb-card-bg)',
                   borderRadius: 12,
                   overflow: 'hidden',
                   cursor: 'pointer',
@@ -165,7 +165,7 @@ export default function CollectionPage() {
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1.02)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+                  (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)';
                 }}
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
@@ -183,10 +183,10 @@ export default function CollectionPage() {
                   ) : (
                     <Box style={{
                       width: '100%', height: '100%',
-                      background: 'var(--mantine-color-dark-4)',
+                      background: 'var(--gb-card-bg-raised)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <Text style={{ fontSize: 28, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
+                      <Text style={{ fontSize: 28, fontWeight: 700, color: 'var(--gb-text-tertiary)' }}>
                         {getInitials(col.name)}
                       </Text>
                     </Box>
@@ -210,7 +210,7 @@ export default function CollectionPage() {
                 </Box>
                 <Box style={{
                   padding: '8px 12px',
-                  borderTop: '1px solid var(--mantine-color-dark-4)',
+                  borderTop: '1px solid var(--gb-card-bg-raised)',
                   display: 'flex',
                   justifyContent: 'flex-end',
                 }}>
@@ -250,8 +250,8 @@ export default function CollectionPage() {
         centered
         size="sm"
         styles={{
-          content: { background: 'var(--mantine-color-dark-7)' },
-          header: { background: 'var(--mantine-color-dark-7)' },
+          content: { background: 'var(--gb-modal-bg)' },
+          header: { background: 'var(--gb-modal-bg)' },
         }}
       >
         <Stack gap="sm">

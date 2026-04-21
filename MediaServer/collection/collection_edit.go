@@ -64,6 +64,11 @@ func CollectionCreation(c *gin.Context, minperm int16) error {
 	return nil
 }
 
+func CollectionEdit(c *gin.Context) error {
+
+	return nil
+}
+
 // Errors reserved for internal server errors only
 func CollectionDeletion(c *gin.Context, minperm int16) error {
 	if v, e := c.Get("collection_perm_level"); e && v.(int16) <= minperm {

@@ -23,17 +23,17 @@ function NavLink({
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '9px 12px', borderRadius: 8,
-        color: 'rgba(255,255,255,0.7)', textDecoration: 'none',
+        color: 'var(--gb-text-secondary)', textDecoration: 'none',
         fontSize: 14, fontWeight: 500,
         transition: 'background 0.15s, color 0.15s',
       }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)';
-        (e.currentTarget as HTMLElement).style.color = '#fff';
+        (e.currentTarget as HTMLElement).style.background = 'var(--gb-hover-bg)';
+        (e.currentTarget as HTMLElement).style.color = 'var(--gb-text-primary)';
       }}
       onMouseLeave={e => {
         (e.currentTarget as HTMLElement).style.background = 'transparent';
-        (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
+        (e.currentTarget as HTMLElement).style.color = 'var(--gb-text-secondary)';
       }}
     >
       <span style={{ opacity: 0.7 }}>{icon}</span>
@@ -45,11 +45,11 @@ function NavLink({
 function NavPanelContent({ onLinkClick }: { onLinkClick?: () => void }) {
   return (
     <>
-      <div style={{ padding: '0 20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 4 }}>
+      <div style={{ padding: '0 20px 24px', borderBottom: '1px solid var(--gb-border)' }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', color: 'var(--gb-text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
           Gallery AI
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#e8e8e8', lineHeight: 1.2 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gb-text-primary)', lineHeight: 1.2 }}>
           My Images
         </div>
       </div>
@@ -106,7 +106,7 @@ export default function SidebarNav() {
             onClick={closeNav}
             style={{
               position: 'fixed', inset: 0, zIndex: 55,
-              background: 'rgba(0,0,0,0.5)',
+              background: 'var(--gb-backdrop)',
             }}
           />
         )}
@@ -119,8 +119,8 @@ export default function SidebarNav() {
             zIndex: 60,
             transform: open ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.25s ease',
-            background: 'rgba(20,20,20,0.98)',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
+            background: 'var(--gb-panel-bg)',
+            borderRight: '1px solid var(--gb-border)',
             display: 'flex', flexDirection: 'column',
             padding: '24px 0',
           }}
@@ -137,8 +137,8 @@ export default function SidebarNav() {
       style={{
         width: 200, flexShrink: 0,
         position: 'sticky', top: 0, height: '100vh',
-        background: 'rgba(255,255,255,0.03)',
-        borderRight: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--gb-sidebar-bg)',
+        borderRight: '1px solid var(--gb-border)',
         display: 'flex', flexDirection: 'column',
         padding: '24px 0',
       }}

@@ -120,7 +120,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <UserProvider>
       <AppStateProvider>
-        <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: '#0d0d0d' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: 'var(--gb-bg)' }}>
           <SidebarNav />
           <div style={{ flex: 1, minWidth: 0, overflowX: 'clip' }}>
             {children}

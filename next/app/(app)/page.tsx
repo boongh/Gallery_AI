@@ -284,15 +284,15 @@ export default function Home() {
   }
 
   return (
-    <Box style={{ background: '#0d0d0d', minHeight: '100vh' }}>
+    <Box style={{ background: 'var(--gb-bg)', minHeight: '100vh' }}>
 
       {/* Top bar */}
       <Box
         style={{
           position: 'sticky', top: 0, zIndex: 20,
-          background: 'rgba(13,13,13,0.85)',
+          background: 'var(--gb-header-bg)',
           backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--gb-border-mid)',
           padding: isMobile ? '12px 16px' : '12px 24px',
         }}
       >
@@ -398,9 +398,9 @@ export default function Home() {
         <Box
           style={{
             position: 'sticky', top: 62, zIndex: 19,
-            background: 'rgba(13,13,13,0.92)',
+            background: 'var(--gb-header-bg)',
             backdropFilter: 'blur(12px)',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: '1px solid var(--gb-border-mid)',
             padding: '8px 24px',
           }}
         >
@@ -445,8 +445,8 @@ export default function Home() {
           style={{
             margin: isMobile ? '0 8px' : '0 24px',
             padding: '16px 20px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--gb-inset-bg)',
+            border: '1px solid var(--gb-inset-border)',
             borderTop: 'none',
             borderRadius: '0 0 12px 12px',
           }}
@@ -506,12 +506,12 @@ export default function Home() {
                   onClick={() => { if (selectMode) { toggleImageSelection(image.id); } else { setLightboxImage(image); } }}
                   style={{
                     aspectRatio: '1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer',
-                    background: 'var(--mantine-color-dark-6)', position: 'relative',
+                    background: 'var(--gb-card-bg)', position: 'relative',
                     transition: selectMode ? 'none' : 'transform 0.15s, box-shadow 0.15s',
                     outline: isSelected ? '2px solid var(--mantine-color-blue-5)' : 'none',
                     outlineOffset: '-2px',
                   }}
-                  onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)'; }}
+                  onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                   onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                 >
                   <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
@@ -567,12 +567,12 @@ export default function Home() {
                         onClick={() => { if (selectMode) { toggleImageSelection(image.id); } else { setLightboxImage(image); } }}
                         style={{
                           aspectRatio: '1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer',
-                          background: 'var(--mantine-color-dark-6)', position: 'relative',
+                          background: 'var(--gb-card-bg)', position: 'relative',
                           transition: selectMode ? 'none' : 'transform 0.15s, box-shadow 0.15s',
                           outline: isSelected ? '2px solid var(--mantine-color-blue-5)' : 'none',
                           outlineOffset: '-2px',
                         }}
-                        onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)'; }}
+                        onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                         onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                       >
                         <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
