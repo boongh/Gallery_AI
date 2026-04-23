@@ -1,0 +1,7 @@
+{
+  "go.gopath": "C:\\Users\\Boons\\go",
+  "go.goroot": "C:\\Users\\Boons\\sdk\\go1.26.2",
+  "go.alternateTools": {
+    "gopls": "C:\\Users\\Boons\\go\\bin\\gopls.exe"
+  }
+}

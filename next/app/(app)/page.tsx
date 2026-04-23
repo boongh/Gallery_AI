@@ -454,9 +454,9 @@ export default function Home() {
           <Group>
             <FileInput
               flex={1}
-              accept="image/*"
+              accept="image/*,video/*,.cr3"
               multiple
-              placeholder="Choose images…"
+              placeholder="Choose files…"
               value={uploadFiles}
               onChange={setUploadFiles}
               styles={{ input: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}

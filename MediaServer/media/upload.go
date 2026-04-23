@@ -66,30 +66,24 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		return fmt.Errorf("No collection found for user %s", userUUID)
 	}
 
-	q_thumbnail := serverutils.FailOnError(func() (amqp.Queue, error) {
-		return serverutils.Rabbitmqchannel.QueueDeclare(
-			"thumbnail_generation_queue", // name
-			true,                         // durable
-			false,                        // delete when unused
-			false,                        // exclusive
-			false,                        // no-wait
-			nil,                          // arguments
-		)
-	}, "", "failed to initialize thumbnail queue", context.Background())
+	ch := serverutils.FailOnError(func() (*amqp.Channel, error) {
+		return serverutils.Rabbitmqconnection.Channel()
+	}, "", "failed to open rabbitmq channel", context.Background())
+	defer ch.Close()
 
-	q_preview := serverutils.FailOnError(func() (amqp.Queue, error) {
-		return serverutils.Rabbitmqchannel.QueueDeclare(
-			"preview_generation_queue", // name
-			true,                       // durable
-			false,                      // delete when unused
-			false,                      // exclusive
-			false,                      // no-wait
-			nil,                        // arguments
+	q_thumbnail := serverutils.FailOnError(func() (amqp.Queue, error) {
+		return ch.QueueDeclare(
+			"thumbnail_preview_generation_queue", // name
+			true,                                 // durable
+			false,                                // delete when unused
+			false,                                // exclusive
+			false,                                // no-wait
+			nil,                                  // arguments
 		)
 	}, "", "failed to initialize thumbnail queue", context.Background())
 
 	q_vector := serverutils.FailOnError(func() (amqp.Queue, error) {
-		return serverutils.Rabbitmqchannel.QueueDeclare(
+		return ch.QueueDeclare(
 			"vector_generation_queue", // name
 			true,                      // durable
 			false,                     // delete when unused
@@ -100,7 +94,7 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 	}, "", "failed to initialize vector queue", context.Background())
 
 	q_metadata := serverutils.FailOnError(func() (amqp.Queue, error) {
-		return serverutils.Rabbitmqchannel.QueueDeclare(
+		return ch.QueueDeclare(
 			"metadata_generation_queue", // name
 			true,                        // durable
 			false,                       // delete when unused
@@ -108,7 +102,7 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 			false,                       // no-wait
 			nil,                         // arguments
 		)
-	}, "", "failed to initialize vector queue", context.Background())
+	}, "", "failed to initialize metadata queue", context.Background())
 
 	form := serverutils.FailOnError(func() (*multipart.Form, error) {
 		return c.MultipartForm()
@@ -239,7 +233,7 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		fmt.Printf("parsed %v", jsonpub)
 
 		//thumbnail generation
-		chpuberr := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+		chpuberr := ch.PublishWithContext(ctx,
 			"",               // exchange
 			q_thumbnail.Name, // routing key
 			false,            // mandatory
@@ -255,25 +249,8 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 			log.Printf("[X] Sent %s RBMQ", jsonpub)
 		}
 
-		//preview generation
-		chpuberr_prev := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
-			"",             // exchange
-			q_preview.Name, // routing key
-			false,          // mandatory
-			false,          // immediate
-			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        jsonpub,
-			})
-
-		if chpuberr_prev != nil {
-			return fmt.Errorf("fail to connect to publish to rabbitmq %s", chpuberr_prev)
-		} else {
-			log.Printf("[X] Sent %s RBMQ", jsonpub)
-		}
-
 		//vector generation
-		chpuberr_vec := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+		chpuberr_vec := ch.PublishWithContext(ctx,
 			"",            // exchange
 			q_vector.Name, // routing key
 			false,         // mandatory
@@ -290,7 +267,7 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		}
 
 		//metadata generation
-		chpuberr_meta := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+		chpuberr_meta := ch.PublishWithContext(ctx,
 			"",              // exchange
 			q_metadata.Name, // routing key
 			false,           // mandatory

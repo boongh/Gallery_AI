@@ -1,6 +1,6 @@
 module server
 
-go 1.24.1
+go 1.24.2
 
 require (
 	github.com/gin-gonic/gin v1.11.0
@@ -16,6 +16,7 @@ require (
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/cshum/vipsgen v1.3.9 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect

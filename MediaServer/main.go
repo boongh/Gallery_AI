@@ -2,6 +2,7 @@ package main
 
 import (
 	"MediaServer/collection"
+	"MediaServer/mediahandler"
 	"MediaServer/serverutils"
 
 	// "fmt"
@@ -40,6 +41,8 @@ func main() {
 
 	pgconnection := serverutils.PostgresConnect()
 	rbmqconnect, rbmqchannel, _ := serverutils.RabbitMQConnect("")
+
+	mediahandler.StartThumbnailWorker("thumbnail_preview_generation_queue")
 
 	serverutils.QdrantConnect()
 

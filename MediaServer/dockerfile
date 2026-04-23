@@ -1,15 +1,118 @@
-FROM golang:alpine AS builder
+# ── Stage 1: build LibRaw with CR3 support ──────────────────────────────────
+FROM alpine:3.21 AS libraw-builder
+RUN apk add --no-cache \
+    build-base autoconf automake libtool pkgconf \
+    wget \
+    jpeg-dev zlib-dev
+ARG LIBRAW_VERSION=0.22.0
+RUN wget -O /tmp/libraw.tar.gz \
+        https://www.libraw.org/data/LibRaw-${LIBRAW_VERSION}.tar.gz && \
+    cd /tmp && tar xf libraw.tar.gz && \
+    cd LibRaw-${LIBRAW_VERSION} && \
+    autoreconf -fiv && \
+    ./configure \
+        --prefix=/opt/libraw \
+        --enable-jpeg \
+        --disable-jasper \
+        --disable-lcms \
+        --disable-static && \
+    make -j$(nproc) && \
+    make install
+
+# Strip -fopenmp so meson's libraw probe doesn't fail on an unknown linker flag
+RUN sed -i 's/ -fopenmp//g' \
+    /opt/libraw/lib/pkgconfig/libraw.pc \
+    /opt/libraw/lib/pkgconfig/libraw_r.pc
+
+
+RUN cat /opt/libraw/lib/pkgconfig/libraw.pc
+
+# ── Stage 2: build libvips linked against our LibRaw ────────────────────────
+FROM alpine:3.21 AS vips-builder
+COPY --from=libraw-builder /opt/libraw /opt/libraw
+RUN apk add --no-cache \
+    build-base meson ninja pkgconf \
+    glib-dev expat-dev \
+    jpeg-dev libpng-dev libwebp-dev \
+    libheif-dev tiff-dev libexif-dev \
+    lcms2-dev
+
+
+
+RUN PKG_CONFIG_PATH=/opt/libraw/lib/pkgconfig \
+    pkg-config --debug libraw 2>&1 | head -40
+# ── Verify LibRaw is visible to pkg-config before we try to build libvips ──
+RUN PKG_CONFIG_PATH=/opt/libraw/lib/pkgconfig \
+    pkg-config --modversion libraw_r && \
+    PKG_CONFIG_PATH=/opt/libraw/lib/pkgconfig \
+    pkg-config --modversion libraw
+
+ARG VIPS_VERSION=8.18.0
+ADD https://github.com/libvips/libvips/releases/download/v${VIPS_VERSION}/vips-${VIPS_VERSION}.tar.xz /tmp/
+
+
+RUN cd /tmp && tar xf vips-${VIPS_VERSION}.tar.xz && \
+    cd vips-${VIPS_VERSION} && \
+    PKG_CONFIG_PATH=/opt/libraw/lib/pkgconfig \
+    meson setup build \
+        --prefix=/opt/vips \
+        --buildtype=release \
+        -Dmagick=disabled \
+        -Dopenslide=disabled \
+        && \
+    cd build && \
+    ninja -j$(nproc) && \
+    ninja install
+
+
+# Diagnostic: case-insensitive grep, never fails the build
+RUN grep -i "raw" \
+    /tmp/vips-${VIPS_VERSION}/build/meson-logs/meson-log.txt || true
+
+# Verify libraw got linked — fails the build if it didn't
+RUN readelf -d /opt/vips/lib/libvips.so | grep -i raw
+
+# ── Stage 3: Go build ────────────────────────────────────────────────────────
+FROM golang:1.26-alpine AS go-builder
+
+COPY --from=libraw-builder /opt/libraw /opt/libraw
+COPY --from=vips-builder   /opt/vips   /opt/vips
+
+RUN apk add --no-cache \
+    build-base pkgconf \
+    glib-dev expat-dev \
+    jpeg-dev libpng-dev libwebp-dev \
+    libheif-dev tiff-dev \
+    libexif-dev \
+    lcms2-dev
+
+ENV PKG_CONFIG_PATH=/opt/vips/lib/pkgconfig:/opt/libraw/lib/pkgconfig
+ENV CGO_CFLAGS="-I/opt/vips/include -I/opt/libraw/include"
+ENV CGO_LDFLAGS="-L/opt/vips/lib -L/opt/libraw/lib -lvips -lraw_r -Wl,-rpath,/opt/vips/lib -Wl,-rpath,/opt/libraw/lib"
+
+ENV CGO_ENABLED=1
 
 WORKDIR /app
-
+COPY go.mod go.sum ./
 COPY . .
+RUN go build -ldflags="-s -w" -o server .
 
-RUN go build -o server .
+# ── Stage 4: minimal Alpine runtime ─────────────────────────────────────────
+FROM alpine:3.21
 
-FROM alpine:latest AS runner
+COPY --from=libraw-builder /opt/libraw /opt/libraw
+COPY --from=vips-builder   /opt/vips   /opt/vips
+COPY --from=go-builder     /app/server /app/server
 
-COPY --from=builder /app/server server
+# Runtime libs only — no -dev packages
+
+RUN apk add --no-cache \
+    glib libexpat \
+    jpeg libpng libwebp \
+    libheif tiff libexif \
+    lcms2 libwebpmux libgomp libwebpdemux
+
+ENV LD_LIBRARY_PATH=/opt/vips/lib:/opt/libraw/lib
 
 EXPOSE 8080
-
-CMD ["./server"]
+CMD ["/app/server"]

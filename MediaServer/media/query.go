@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -209,6 +210,7 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 	case "originals":
 		c.Header("X-Accel-Redirect", "/"+originalFile)
 		c.Header("Content-Type", content_type)
+		c.Header("Content-Disposition", `attachment; filename="`+path.Base(originalFile)+`"`)
 		fmt.Println(originalFile)
 	}
 
