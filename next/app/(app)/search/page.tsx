@@ -6,16 +6,13 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
+import PresignedImage from '@/components/PresignedImage';
 import { useNavContext, useProfileContext } from '@/app/(app)/layout';
 
 interface QueryResult {
   id: string;
   score: number;
-  original_url?: string;
-  thumbnail_url?: string;
-  preview_url?: string;
   created_at?: string;
-  status?: string;
 }
 
 interface QueryResponse {
@@ -30,11 +27,7 @@ interface QueryResponse {
 function mapResult(result: QueryResult): ImageData {
   return {
     id: result.id,
-    original_url: result.original_url ?? '',
-    thumbnail_url: result.thumbnail_url ?? '',
-    preview_url: result.preview_url ?? '',
     format: '',
-    status: result.status ?? '',
     createdAt: result.created_at ? new Date(result.created_at) : new Date(0),
     uploadedAt: result.created_at ? new Date(result.created_at) : new Date(0),
     metaData: {},
@@ -122,8 +115,6 @@ export default function SearchPage() {
       runSearch(inputValue);
     }
   }
-
-  const thumbSrc = (img: ImageData) => img.thumbnail_url || img.original_url;
 
   return (
     <Box style={{ background: 'var(--gb-bg)', minHeight: '100vh' }}>
@@ -292,16 +283,7 @@ export default function SearchPage() {
                   (e.currentTarget as HTMLElement).style.boxShadow = 'none';
                 }}
               >
-                <img
-                  src={thumbSrc(image)}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  onError={(e) => {
-                    const el = e.currentTarget;
-                    if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; }
-                    else if (el.src.includes('/previews/')) { el.src = image.original_url; }
-                  }}
-                />
+                <PresignedImage uuid={image.id} mediaType="thumbnails" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               </Box>
             ))}
           </Box>

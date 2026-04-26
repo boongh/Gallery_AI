@@ -5,15 +5,12 @@ import {
   ScrollArea, Select, SimpleGrid, Skeleton, Stack, Text,
 } from '@mantine/core';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
+import PresignedImage from '@/components/PresignedImage';
 import { useMediaQuery } from '@mantine/hooks';
 
 export interface ImageData {
   id: string;
   format: string;
-  original_url: string;
-  thumbnail_url: string;
-  preview_url: string;
-  status: string;
   createdAt: Date;
   uploadedAt: Date;
   metaData: object;
@@ -30,10 +27,6 @@ function parseImages(raw: any[]): ImageData[] {
   return raw.map(img => ({
     id: img.uuid,
     format: img.format,
-    original_url: img.original_url,
-    thumbnail_url: img.thumbnail_url,
-    preview_url: img.preview_url ?? '',
-    status: img.status,
     uploadedAt: new Date(img.uploaded_at),
     createdAt: new Date(img.created_at),
     metaData: img.metadata || {},
@@ -84,7 +77,7 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
         const uuids: string[] = data.map((d: any) => d.id.PointIdOptions.Uuid);
         const missing = uuids.filter(u => !internalIndexRef.current.has(u));
         if (missing.length > 0) {
-          const res = await fetch('/gms/media?want=uuid-original_url-thumbnail_url-preview_url&offset=0&limit=10000').then(r => r.json());
+          const res = await fetch('/gms/media?want=uuid-format-created_at-uploaded_at&offset=0&limit=10000').then(r => r.json());
           if (cancelled) return;
           const fetched = parseImages(res.content);
           const next = new Map(internalIndexRef.current);
@@ -156,7 +149,11 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
   async function handleDownload() {
     if (!activeImage) return;
     try {
-      const res = await fetch(activeImage.original_url, { credentials: 'include' });
+      const presignedUrl = await fetch(`/gms/media/originals/${activeImage.id}`).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.text();
+      });
+      const res = await fetch(presignedUrl);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement('a'), {
@@ -208,18 +205,11 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
             onMouseEnter={e => { if (img) (e.currentTarget as HTMLElement).style.opacity = '0.75'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
           >
-            {img && (
-              <img
-                src={img.thumbnail_url || img.preview_url || img.original_url}
-                onError={(e) => {
-                  const el = e.currentTarget;
-                  if (el.src.includes('/thumbnails/')) { el.src = img.preview_url || img.original_url; }
-                  else if (el.src.includes('/previews/')) { el.src = img.original_url; }
-                }}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            )}
+            <PresignedImage
+              uuid={uuid}
+              mediaType="thumbnails"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
           </Box>
         );
       })}
@@ -296,9 +286,9 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
             style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}
             onClick={onClose}
           />
-          <img
-            src={activeImage.preview_url || activeImage.original_url}
-            alt=""
+          <PresignedImage
+            uuid={activeImage.id}
+            mediaType="previews"
             style={{
               maxWidth: '100%', maxHeight: '100%',
               objectFit: 'contain', borderRadius: 8, display: 'block',
@@ -339,9 +329,9 @@ export default function Lightbox({ image, onClose, initialImageIndex, onDelete }
     >
       {/* Image fills the modal */}
       <Center style={{ position: 'absolute', inset: 0 }}>
-        <img
-          src={activeImage.preview_url || activeImage.original_url}
-          alt=""
+        <PresignedImage
+          uuid={activeImage.id}
+          mediaType="previews"
           style={{
             maxWidth: '100%', maxHeight: '100%',
             objectFit: 'contain', display: 'block',

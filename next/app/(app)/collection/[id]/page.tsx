@@ -2,12 +2,13 @@
 import { use, useEffect, useState } from 'react';
 import { Box, Button, Center, Loader, Stack, Text } from '@mantine/core';
 import { useRouter } from 'next/navigation';
+import PresignedImage from '@/components/PresignedImage';
 
 interface CollectionInfo {
   uuid: string;
   name: string;
   description: string;
-  thumbnail_url: string | null;
+  thumbnail_uuid: string | null;
   created_at: string;
 }
 
@@ -86,10 +87,10 @@ export default function CollectionInfoPage({ params }: { params: Promise<{ id: s
         >
           <Box style={{ padding: '24px 24px 0', backdropFilter: 'blur(2px)' }}>
             <Box style={{ borderRadius: 12, overflow: 'hidden', aspectRatio: '1', width: '100%' }}>
-              {collection.thumbnail_url ? (
-                <img
-                  src={collection.thumbnail_url}
-                  alt=""
+              {collection.thumbnail_uuid ? (
+                <PresignedImage
+                  uuid={collection.thumbnail_uuid}
+                  mediaType="thumbnails"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
               ) : (

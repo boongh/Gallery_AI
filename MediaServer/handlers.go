@@ -10,13 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary		Get media file by ID
-// @Description	Retrieve a media file by its UUID and type. Returns the file via X-Accel-Redirect (served by nginx). Returns 403 if the authenticated user does not own the media.
+// @Summary		Get presigned URL for a media item
+// @Description	Returns a short-lived presigned S3 GET URL for the requested media item. Valid types: thumbnails, previews, originals. URL expires after 5 minutes. Returns 403 if the authenticated user does not own the media.
 // @Tags			Query
-// @Param			type	path	string	true	"Media type (e.g. thumbnail, original)"
+// @Param			type	path	string	true	"Media type (thumbnails | previews | originals)"
 // @Param			id		path	string	true	"UUID of the media item"
-// @Produce		application/octet-stream
-// @Success		200
+// @Produce		text/plain
+// @Success		200	{string}	string	"Presigned S3 GET URL (5-minute TTL)"
 // @Failure		403
 // @Failure		404
 // @Router			/gms/media/{type}/{id} [GET]
@@ -45,31 +45,45 @@ func POST_DeleteMedias(c *gin.Context) {
 	}
 }
 
-// @Summary		Upload images
-// @Description	Upload images via form data in the field "files"
-// @Tags			Creation
-// @Accept			multipart/form-data
-// @Produce		text/plain
-// @Success		200
-// @Router			/gms/media [POST]
-func POST_MediaUpload(c *gin.Context) {
-	err := mediahandler.MediaUploadHandler(c, serverutils.Postgrespool, serverutils.Postgrespool)
+// @Summary		Initialize a presigned upload session
+// @Description	Returns N presigned S3 PUT URLs and an upload_id. Client uploads files directly to S3 using the presigned URLs, then calls PUT /upload/verify/:upload_id. Session expires in 15 minutes.
+// @Tags			Upload
+// @Param			count	query	int	false	"Number of files to upload (default 1, max 1000)"
+// @Produce		application/json
+// @Success		200	{object}	object{upload_id=string,presigned_urls=[]string,expiration=string}
+// @Failure		500
+// @Router			/upload/init [GET]
+func GET_MediaUploadInit(c *gin.Context) {
+	err := mediahandler.MediaUploadInit(c, serverutils.S3client, serverutils.Postgrespool)
 	if err != nil {
-		log.Println("Image Upload Fail:", err)
+		log.Println("Media Upload Init Fail:", err)
 		c.Status(500)
 	}
 }
 
-// @Summary		Query for media test for changs
-// @Description	Query for media available to a user
-// @Tags			Query
-// @Param			offset query int false "Offset from the first of an ordered list"
-// @Param			limit query int false "Limit the number of entries returned"
-// @Param			order query string false "Which order is it in"
-// @Param			by query string false "Which attribute are the entries ordered by"
-// @Param			want query string false "Which attributes are wanted in the response"
-// @Produce		application/json
+// @Summary		Verify a presigned upload session
+// @Description	Checks which files from the upload session have landed in S3 and promotes them to pending processing status. Processing starts within 5 minutes via the background sync job.
+// @Tags			Upload
+// @Param			upload_id	path	string	true	"Upload session ID from /upload/init"
 // @Success		200
+// @Failure		404	{string}	string	"Session not found or expired"
+// @Router			/upload/verify/{upload_id} [PUT]
+func PUT_MediaUploadVerify(c *gin.Context) {
+	err := mediahandler.MediaUploadVerify(c, serverutils.Postgrespool)
+	if err != nil {
+		log.Println("Media Upload Complete Fail:", err)
+		c.Status(500)
+	}
+}
+
+// @Summary		Query media
+// @Description	Returns a paginated list of media items owned by the authenticated user. Results do not include URLs — use GET /media/{type}/{id} to fetch a presigned URL per item.
+// @Tags			Query
+// @Param			offset	query	int		false	"Number of entries to skip"
+// @Param			limit	query	int		false	"Maximum number of entries to return"
+// @Param			want	query	string	false	"Dash-separated list of fields: uuid, format, created_at, uploaded_at, metadata"
+// @Produce		application/json
+// @Success		200	{object}	serverutils.PaginatedResponse
 // @Router			/gms/media [GET]
 func GET_MediaQuery(c *gin.Context) {
 	err := mediahandler.QueryMedia(c, serverutils.Postgrespool)
@@ -172,7 +186,7 @@ const inforeditorpermlevel int16 = 40
 // @Produce		application/json
 // @Param			offset	query	int	false	"Number of entries to skip"
 // @Param			limit	query	int	false	"Maximum number of entries to return"
-// @Success		200	{object}	serverutils.PaginatedResponse	"content array of { uuid, created_at, name, description, thumbnail_url }"
+// @Success		200	{object}	serverutils.PaginatedResponse	"content array of { uuid, created_at, name, description, thumbnail_uuid }"
 // @Failure		400
 // @Failure		500
 // @Router			/gms/collection [GET]
@@ -257,7 +271,7 @@ func POST_CollectionInsert(c *gin.Context) {
 }
 
 // @Summary		Get collection image contents
-// @Description	Returns a paginated list of images belonging to the specified collection, ordered by date added. Supports `want`, `offset`, and `limit` query parameters. The `want` parameter is a dash-separated list of fields (e.g. `uuid-original_url-thumbnail_url-preview_url-created_at`). Requires content-viewer permission on the collection.
+// @Description	Returns a paginated list of images belonging to the specified collection, ordered by date added. Supports `want`, `offset`, and `limit` query parameters. The `want` parameter is a dash-separated list of fields (e.g. `uuid-format-created_at-added_at`). Use GET /media/{type}/{uuid} to fetch presigned URLs per item. Requires content-viewer permission on the collection.
 // @Tags			Query
 // @Produce		application/json
 // @Param			collection_id	path	string	true	"UUID of the collection"

@@ -2,8 +2,11 @@ package main
 
 import (
 	"MediaServer/collection"
-	"MediaServer/mediahandler"
 	"MediaServer/serverutils"
+	"bg_workers"
+	"context"
+	"db"
+	"time"
 
 	// "fmt"
 	AuthHandler "MediaServer/auth"
@@ -41,10 +44,14 @@ func main() {
 
 	pgconnection := serverutils.PostgresConnect()
 	rbmqconnect, rbmqchannel, _ := serverutils.RabbitMQConnect("")
-
-	mediahandler.StartThumbnailWorker("thumbnail_preview_generation_queue")
-
 	serverutils.QdrantConnect()
+	serverutils.S3Connect()
+
+	db.RunMigrations(pgconnection)
+
+	go bg_workers.DBSyncToStorageJob(context.Background(), time.NewTicker(1*time.Minute), serverutils.Postgrespool, serverutils.Postgrespool, serverutils.S3client)
+	go bg_workers.VectorSyncToDBJob(context.Background(), time.NewTicker(1*time.Minute), serverutils.Postgrespool)
+	bg_workers.StartThumbnailWorker("thumbnail_preview_generation_queue")
 
 	defer pgconnection.Close()
 	defer rbmqconnect.Close()
@@ -78,14 +85,20 @@ func main() {
 	}
 
 	{
-		uploadgroup := protected.Group("/media")
-		uploadgroup.GET("", GET_MediaQuery)
-		uploadgroup.GET("/:type/:id", GET_MediaID)
-		uploadgroup.GET("/suggestions", GET_MediaQueryRelated)
+		uploadGroup := protected.Group("/upload")
+		uploadGroup.GET("/init", GET_MediaUploadInit)
+		uploadGroup.PUT("/verify/:upload_id", PUT_MediaUploadVerify)
+	}
 
-		uploadgroup.POST("/:collection_id", POST_MediaUpload)
-		uploadgroup.POST("/delete", POST_DeleteMedias)
-		uploadgroup.POST("/query", POST_MediaAdvancedQuery)
+	{
+		mediagroup := protected.Group("/media")
+		mediagroup.GET("", GET_MediaQuery)
+		mediagroup.GET("/:type/:id", GET_MediaID)
+		mediagroup.GET("/suggestions", GET_MediaQueryRelated)
+
+		mediagroup.POST("/delete", POST_DeleteMedias)
+		mediagroup.POST("/query", POST_MediaAdvancedQuery)
+
 	}
 
 	{

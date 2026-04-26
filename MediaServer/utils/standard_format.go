@@ -7,4 +7,4 @@ type PaginatedResponse struct {
 
 var ValidCollectionAttributes = []string{"uuid", "created_at", "name", "description", "metadata"}
 
-var ValidMediaAttributes = []string{"uuid", "uuid::text", "format", "original_url", "thumbnail_url", "preview_url", "status", "created_at", "uploaded_at", "metadata"}
+var ValidMediaAttributes = []string{"uuid", "uuid::text", "format", "created_at", "uploaded_at", "metadata"}

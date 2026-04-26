@@ -10,3 +10,5 @@ psycopg[binary,pool]
 python-dotenv
 supervisor
 qdrant_client
+boto3
+exifread

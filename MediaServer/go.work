@@ -7,4 +7,6 @@ use (
 	./media
 	./test
 	./utils
+	./db
+	./workers
 )

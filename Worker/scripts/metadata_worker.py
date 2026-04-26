@@ -1,9 +1,10 @@
-from PIL.ExifTags import TAGS
-from PIL import Image
 from psycopg import sql;
 from utils.u_rabbitmq import connect_to_rabbitmq;
 from utils.u_waitfor import wait_for;
 from utils.u_postgres import connect_to_postgres;
+from utils.u_get_image_from_s3 import get_bytes_from_s3;
+import exifread
+from io import BytesIO
 import json;
 import traceback
 import os;
@@ -20,13 +21,12 @@ def metadata_callback(ch, method, properties, body):
     try:
         jsonbody = json.loads(body);
 
-        savepath = jsonbody['original_filepath'];
-
         #Database variables set up
         uuid = jsonbody['uuid'];
         print("Got metadata req for ", uuid)
     
-        metadata = getmetadata(savepath)
+        
+        metadata = getmetadata(get_bytes_from_s3(os.getenv('S3BUCKET'), jsonbody['original_url']))
         
         succ = update_postgress_metadata(uuid, metadata)
         if not succ:
@@ -38,8 +38,8 @@ def metadata_callback(ch, method, properties, body):
         
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
-        print("exception occured in vector callback:", e)
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        print("exception occured in metadata callback:", e)
+        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
 def update_postgress_metadata(uuid, metadata) -> bool:
     try:
@@ -84,30 +84,33 @@ def update_qdrant_metadata(uuid, metadata) -> bool:
                 collection_name=os.getenv('QDRANTCOLLECTION'),
                 points=[uuid],
                 payload={
-                    "created_at": created_at,
+                    "created_at": int(created_at.timestamp()) if created_at is not None else None,
                     "metadata": metadata,
                     }
             )
             print("Generated metadata for ", uuid)
         except:
+            print("Exception occured while updating qdrant metadata for uuid ", uuid, ": ", sys.exc_info()[0], flush=True)
+            print(traceback.format_exc(), flush=True)
             return False
 
     return True
 
-def getmetadata(savepath) -> dict:
-    pil_img = Image.open(savepath)
-    exif_info = pil_img._getexif()
-    if exif_info is None:
-        return None
+def getmetadata(image_bytes: bytes) -> dict:
+    tags = exifread.process_file(BytesIO(image_bytes), details=False)
+    if not tags:
+        return {}
     exif = {}
-    for k, v in exif_info.items():
-        tag = TAGS.get(k, k)
-        if isinstance(v, (str, int, float, bool)):
-            exif[tag] = v
-        elif isinstance(v, bytes):
-            continue
-        else:
-            exif[tag] = str(v)
+    for key, val in tags.items():
+        tag_name = key.split(' ', 1)[-1] if ' ' in key else key
+        printable = str(val)
+        try:
+            exif[tag_name] = int(printable)
+        except ValueError:
+            try:
+                exif[tag_name] = float(printable)
+            except ValueError:
+                exif[tag_name] = printable
     return exif
     
 def main():

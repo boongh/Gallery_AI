@@ -141,10 +141,10 @@ func GetAvailCollections(c *gin.Context, urlpathroot string) error {
 	defer cancel()
 
 	queryStatement := `
-		SELECT collections.collection_data.uuid::text, collections.collection_data.created_at, name, description, galleryindex.images.thumbnail_url
+		SELECT collections.collection_data.uuid::text, collections.collection_data.created_at, name, description, galleryindex.images.uuid::text AS thumbnail_uuid
 		FROM collections.collection_userperms
 		JOIN collections.collection_data
-		ON collections.collection_data.uuid = collections.collection_userperms.collection_uuid 
+		ON collections.collection_data.uuid = collections.collection_userperms.collection_uuid
 		LEFT JOIN galleryindex.images
 		ON galleryindex.images.uuid = collections.collection_data.thumbnail_image_uuid
 		WHERE collections.collection_userperms.user_uuid = $1 AND permission > 0

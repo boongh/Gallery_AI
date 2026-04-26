@@ -4,12 +4,13 @@ import {
   Box, Button, Center, Group, Loader, Modal,
   Stack, Text, Textarea, TextInput,
 } from '@mantine/core';
+import PresignedImage from '@/components/PresignedImage';
 
 interface Collection {
   uuid: string;
   name: string;
   description: string;
-  thumbnail_url: string | null;
+  thumbnail_uuid: string | null;
 }
 
 interface AddToCollectionModalProps {
@@ -138,10 +139,10 @@ export default function AddToCollectionModal({ opened, onClose, selectedIds }: A
                   onClick={() => addingTo === null && addToCollection(col.uuid)}
                 >
                   <Box style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
-                    {col.thumbnail_url ? (
-                      <img
-                        src={col.thumbnail_url}
-                        alt=""
+                    {col.thumbnail_uuid ? (
+                      <PresignedImage
+                        uuid={col.thumbnail_uuid}
+                        mediaType="thumbnails"
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                       />
                     ) : (

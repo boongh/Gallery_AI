@@ -1,0 +1,1 @@
+ALTER TABLE galleryindex.images ADD embedder_id TEXT;

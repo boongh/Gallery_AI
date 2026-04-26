@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"path"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
 
 	"github.com/jackc/pgx/v5"
@@ -151,7 +152,8 @@ func (f *FakeDB) Query(ctx context.Context, sql string, args ...interface{}) (pg
 	return fake, nil
 }
 
-func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
+func GetMediaByID(c *gin.Context, querier serverutils.PostgresQuerier) error {
+
 	id := c.Param("id")
 	typeOfMedia := c.Param("type")
 	userUUID, exist := c.Get("userUUID")
@@ -165,9 +167,9 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 	defer cancel()
 
 	query := `
-		SELECT uuid, owner_uuid, thumbnail_filepath, preview_filepath, original_filepath, type
+		SELECT uuid, owner_uuid, thumbnail_key, preview_key, original_key
 		FROM galleryindex.images
-		WHERE uuid = $1`
+		WHERE uuid = $1 AND status = 'active'`
 
 	rows, err := querier.Query(ctx, query, id)
 
@@ -184,12 +186,11 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 
 	var imageUUID string
 	var ownerUUID string
-	var thumbnailFile string
-	var previewFile string
-	var originalFile string
-	var content_type string
+	var thumbnailKey string
+	var previewKey string
+	var originalKey string
 
-	err = rows.Scan(&imageUUID, &ownerUUID, &thumbnailFile, &previewFile, &originalFile, &content_type)
+	err = rows.Scan(&imageUUID, &ownerUUID, &thumbnailKey, &previewKey, &originalKey)
 
 	if err != nil {
 		log.Fatalf("scan fails %s", err)
@@ -200,26 +201,62 @@ func GetMediaByID(c *gin.Context, querier PostgresQuerier) error {
 		return nil
 	}
 
-	switch typeOfMedia {
-	case "thumbnails":
-		c.Header("X-Accel-Redirect", "/"+thumbnailFile)
-		fmt.Println(thumbnailFile)
-	case "previews":
-		c.Header("X-Accel-Redirect", "/"+previewFile)
-		fmt.Println(previewFile)
-	case "originals":
-		c.Header("X-Accel-Redirect", "/"+originalFile)
-		c.Header("Content-Type", content_type)
-		c.Header("Content-Disposition", `attachment; filename="`+path.Base(originalFile)+`"`)
-		fmt.Println(originalFile)
+	presigner := s3.NewPresignClient(serverutils.S3client)
+
+	publicEndpointOpt := func(opts *s3.PresignOptions) {
+		opts.ClientOptions = append(opts.ClientOptions, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(serverutils.S3PublicEndpoint)
+		})
 	}
 
-	c.Status(200)
+	switch typeOfMedia {
+	case "thumbnails":
+		res, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+			ResponseExpires: aws.Time(time.Now().Add(serverutils.PresignGetExpires)),
+			Bucket:          aws.String(serverutils.S3Bucket),
+			Key:             aws.String(thumbnailKey),
+		}, publicEndpointOpt)
 
-	return nil
+		if err != nil {
+			log.Printf("Failed to presign thumbnail URL for %s: %s", thumbnailKey, err)
+			c.Status(500)
+			return nil
+		}
+		c.String(200, res.URL)
+		return nil
+	case "previews":
+		res, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+			ResponseExpires: aws.Time(time.Now().Add(serverutils.PresignGetExpires)),
+			Bucket:          aws.String(serverutils.S3Bucket),
+			Key:             aws.String(previewKey),
+		}, publicEndpointOpt)
+		if err != nil {
+			log.Printf("Failed to presign preview URL for %s: %s", previewKey, err)
+			c.Status(500)
+			return nil
+		}
+		c.String(200, res.URL)
+		return nil
+	case "originals":
+		res, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+			ResponseExpires: aws.Time(time.Now().Add(serverutils.PresignGetExpires)),
+			Bucket:          aws.String(serverutils.S3Bucket),
+			Key:             aws.String(originalKey),
+		}, publicEndpointOpt)
+		if err != nil {
+			log.Printf("Failed to presign original URL for %s: %s", originalKey, err)
+			c.Status(500)
+			return nil
+		}
+		c.String(200, res.URL)
+		return nil
+	default:
+		c.Status(404)
+		return nil
+	}
 }
 
-func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
+func QueryMedia(c *gin.Context, querier serverutils.PostgresQuerier) error {
 
 	var idtemp any
 	var useruuid string
@@ -263,7 +300,7 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 
 	query := fmt.Sprintf(`
 		SELECT %s FROM galleryindex.images
-		WHERE owner_uuid= $3
+		WHERE owner_uuid= $3 AND status = 'active'
 		ORDER BY uploaded_at DESC
 		LIMIT $2
 		OFFSET $1
@@ -295,7 +332,7 @@ func QueryMedia(c *gin.Context, querier PostgresQuerier) error {
 	return nil
 }
 
-func QueryMediaRelated(c *gin.Context, querier PostgresQuerier) error {
+func QueryMediaRelated(c *gin.Context, querier serverutils.PostgresQuerier) error {
 	useruuid, exists := c.Get("userUUID")
 	if !exists || useruuid == "" {
 		c.Status(401)

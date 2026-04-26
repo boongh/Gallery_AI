@@ -1,0 +1,1 @@
+ALTER TABLE galleryindex.images DROP COLUMN embedder_id;

@@ -3,27 +3,41 @@ package serverutils
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qdrant/go-client/qdrant"
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 var Postgrespool *pgxpool.Pool
 var Rabbitmqconnection *amqp.Connection
 var Rabbitmqchannel *amqp.Channel
 var Qdrantclient *qdrant.Client
+var S3client *s3.Client
+var S3PublicEndpoint = os.Getenv("S3_PUBLIC_ENDPOINT")
+var S3Bucket = os.Getenv("S3_BUCKET")
 
 func PostgresConnect() *pgxpool.Pool {
 	return FailOnError(func() (*pgxpool.Pool, error) {
+		pgport := os.Getenv("PGPORT")
+		if pgport == "" {
+			pgport = "5432"
+		}
 		pool, err := pgxpool.New(context.Background(),
 			fmt.Sprintf("postgres://%s:%s@%s:%s/%s",
 				os.Getenv("PGUSER"),
 				os.Getenv("PGPASSWORD"),
 				os.Getenv("PGHOST"),
-				os.Getenv("PGPORT"),
+				pgport,
 				os.Getenv("PGDATABASE")))
 
 		Postgrespool = pool
@@ -75,5 +89,38 @@ func QdrantConnect() *qdrant.Client {
 	}, "", "failed to connect to qdrant", context.Background())
 
 	Qdrantclient = client
+	return client
+}
+
+func S3Connect() *s3.Client {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	endpoint := os.Getenv("S3_ENDPOINT")
+	accessKey := os.Getenv("S3_ACCESS_KEY")
+	secretKey := os.Getenv("S3_SECRET_KEY")
+
+	fmt.Printf("S3 Endpoint: %s\n", endpoint)
+	fmt.Printf("S3 ACCESS KEY: %s\n", accessKey)
+	fmt.Printf("S3 SECRET KEY: %s\n", secretKey)
+	fmt.Printf("S3 BUCKET: %s\n", S3Bucket)
+
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endpoint)
+		o.UsePathStyle = true
+	})
+
+	S3client = client
+
 	return client
 }

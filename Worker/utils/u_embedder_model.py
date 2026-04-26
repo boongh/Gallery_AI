@@ -1,15 +1,16 @@
-from transformers import CLIPProcessor, CLIPModel
+from transformers import AutoModel, AutoProcessor
 from PIL import Image
 import torch
+import os
 
 
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+model = AutoModel.from_pretrained(os.getenv('MODEL_ID'))
+processor = AutoProcessor.from_pretrained(os.getenv('MODEL_ID'))
 model.eval()
 
 
-def embed_image(image_path: str) -> list[float]:
-    image = Image.open(image_path).convert("RGB")
+def embed_image(imagebyte: Image.Image) -> list[float]:
+    image = imagebyte.convert("RGB")
     inputs = processor(images=image, return_tensors="pt")
     # print("Processing image for embedding...")
     with torch.no_grad():

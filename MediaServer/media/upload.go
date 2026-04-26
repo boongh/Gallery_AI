@@ -3,67 +3,192 @@ package mediahandler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/fs"
-	"log"
-	"mime/multipart"
-	"os"
-	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"MediaServer/serverutils"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type msg_type struct {
-	UUID              string `json:"uuid"`
-	OWNERUUID         string `json:"owner_uuid"`
-	COLLECTIONUUID    string `json:"collection_uuid"`
-	FILEURLPATH       string `json:"original_url"`
-	SAVEPATH          string `json:"original_filepath"`
-	THUMBNAILURLPATH  string `json:"thumbnail_url"`
-	THUMBNAILSAVEPATH string `json:"thumbnail_filepath"`
-	PREVIEWURL        string `json:"preview_url"`
-	PREVIEWPATH       string `json:"preview_filepath"`
+type Msg_Type struct {
+	UUID           string `json:"uuid"`
+	OWNERUUID      string `json:"owner_uuid"`
+	COLLECTIONUUID string `json:"collection_uuid"`
+	FILEURLKEY     string `json:"original_url"`
+	THUMBNAILKEY   string `json:"thumbnail_url"`
+	PREVIEWKEY     string `json:"preview_url"`
 }
 
-type Server struct {
-	Pool *pgxpool.Pool
-}
-
-func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImagePostgresInserter) error {
-
-	userUUID, exist := c.Get("userUUID")
-	collectionID := c.Param("collection_id")
-
-	if !exist {
-		c.Status(401)
-		return fmt.Errorf("Unauthorized: User not authenticated")
-	}
-
-	query := `SELECT uuid FROM collections.collection_data
-				WHERE uuid = $1 AND owner_uuid = $2`
+func MediaUploadInit(c *gin.Context, s3Client *s3.Client, postgresPool *pgxpool.Pool) error {
+	count, err := strconv.Atoi(c.Query("count"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	rows, err := querier.Query(ctx, query, collectionID, userUUID)
-
+	userUUID, _ := c.Get("userUUID")
 	if err != nil {
-		log.Fatalf("query fails %s", err)
+		count = 1
 	}
 
-	defer rows.Close()
+	presigner := s3.NewPresignClient(s3Client)
 
-	if !rows.Next() {
+	buckOut, err := s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(serverutils.S3Bucket),
+	})
+	if err != nil {
+		// Check if it's a 404 (bucket doesn't exist)
+		var httpErr *http.ResponseError
+		if errors.As(err, &httpErr) && httpErr.HTTPStatusCode() == 404 {
+			fmt.Printf("Bucket %s does not exist yet, creating...\n", serverutils.S3Bucket)
+			_, errBuck := s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+				Bucket: aws.String(serverutils.S3Bucket),
+			})
+			if errBuck != nil {
+				return fmt.Errorf("failed to create S3 bucket: %s", errBuck)
+			}
+		} else {
+			// Some other error (auth, network, wrong endpoint, etc.)
+			return fmt.Errorf("failed to access S3 bucket: %s", err)
+		}
+	} else {
+		_ = buckOut // bucket exists, all good
+	}
+
+	resList := []string{}
+	uuids := []uuid.UUID{}
+	uploadid := uuid.New()
+	entries := [][]any{}
+
+	for i := 0; i < count && i < 1000; i++ {
+
+		bucketName := serverutils.S3Bucket
+		itemUUID := uuid.New()
+		uuids = append(uuids, itemUUID)
+
+		itemSharedSuffix := uploadid.String() + userUUID.(string) + "/" + itemUUID.String()
+		og_key := "/originals/" + itemSharedSuffix
+		t_key := "/thumbnails/" + itemSharedSuffix
+		p_key := "/previews/" + itemSharedSuffix
+
+		input := &s3.PutObjectInput{
+			Bucket: &bucketName,
+			Key:    &og_key,
+			// You can also add metadata, content-type constraints, etc.
+		}
+
+		res, err := presigner.PresignPutObject(context.Background(), input, func(opts *s3.PresignOptions) {
+			opts.Expires = 15 * time.Minute
+			opts.ClientOptions = append(opts.ClientOptions, func(o *s3.Options) {
+				o.BaseEndpoint = aws.String(serverutils.S3PublicEndpoint)
+			})
+		})
+
+		if err != nil {
+			return fmt.Errorf("failed to generate presigned URL: %s", err)
+		}
+
+		resList = append(resList, res.URL)
+
+		entries = append(entries, []any{
+			itemUUID,
+			userUUID,
+			nil,
+			og_key,
+			t_key,
+			p_key,
+			"pending upload",
+			time.Now(),
+			time.Now(),
+			nil,
+		})
+	}
+
+	_, err = postgresPool.Exec(context.Background(),
+		"INSERT INTO s3.uploadstats (uuid, user_uuid, upload_uuids, expires_at, created_at) VALUES ($1, $2, $3, $4, $5)",
+		uploadid, userUUID, uuids, time.Now().Add(time.Minute*15), time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to insert upload session: %s", err)
+	}
+
+	_, err = postgresPool.CopyFrom(ctx, pgx.Identifier{"galleryindex", "images"},
+		[]string{"uuid", "owner_uuid", "format", "original_key", "thumbnail_key", "preview_key", "status", "created_at", "uploaded_at", "metadata"},
+		pgx.CopyFromRows(entries))
+	if err != nil {
+		return fmt.Errorf("failed to pre-populate image entries: %s", err)
+	}
+
+	c.JSON(200, map[string]any{
+		"upload_id":      uploadid,
+		"presigned_urls": resList,
+		"expiration":     15 * time.Minute,
+	})
+
+	return nil
+}
+
+func MediaUploadVerify(c *gin.Context, postgresPool *pgxpool.Pool) error {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	uploadID := c.Param("upload_id")
+	userUUID, _ := c.Get("userUUID")
+
+	var exists bool
+	err := postgresPool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM s3.uploadstats WHERE uuid = $1 AND user_uuid = $2 AND expires_at > NOW() - INTERVAL '24 hour')`,
+		uuid.MustParse(uploadID), userUUID,
+	).Scan(&exists)
+
+	if !exists {
 		c.Status(404)
-		return fmt.Errorf("No collection found for user %s", userUUID)
+		return fmt.Errorf("upload session not found or expired")
+	}
+
+	//uploadID valid -->
+
+	output, err := serverutils.S3client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(serverutils.S3Bucket),
+		Prefix: aws.String("/originals/" + uploadID),
+	})
+
+	var existids []uuid.UUID
+	for _, v := range output.Contents {
+		token := strings.Split(*v.Key, "/")
+		id := token[len(token)-1]
+		parsed, _ := uuid.Parse(id)
+		existids = append(existids, parsed)
+	}
+
+	sql := `UPDATE galleryindex.images
+			SET status = 'pending processing'
+			WHERE uuid = ANY($1) AND status = 'pending upload'
+			RETURNING uuid::text, original_key, thumbnail_key, preview_key`
+
+	rows, err := postgresPool.Query(context.Background(), sql, existids)
+	var ToWorkerList []Msg_Type
+
+	defer rows.Close()
+	for rows.Next() {
+		var message Msg_Type
+		err = rows.Scan(&message.UUID, &message.FILEURLKEY, &message.THUMBNAILKEY, &message.PREVIEWKEY)
+
+		if err != nil {
+			c.Status(400)
+			return fmt.Errorf("failed to query upload stats: %s", err)
+		}
+
+		ToWorkerList = append(ToWorkerList, message)
 	}
 
 	ch := serverutils.FailOnError(func() (*amqp.Channel, error) {
@@ -104,187 +229,55 @@ func MediaUploadHandler(c *gin.Context, querier PostgresQuerier, inserter ImageP
 		)
 	}, "", "failed to initialize metadata queue", context.Background())
 
-	form := serverutils.FailOnError(func() (*multipart.Form, error) {
-		return c.MultipartForm()
-	}, "successfully parsed form", "fail to parse form", context.Background())
+	for _, msg := range ToWorkerList {
+		body, _ := json.Marshal(msg)
 
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	files := form.File["files"]
-
-	//{uuid}, {format}, {filepath}, {thumbnail path}, {status}, {created at}, {uploaded at}, {metadata}
-	entries := [][]any{}
-
-	collectionentries := [][]any{}
-
-	message := []msg_type{}
-
-	for _, file := range files {
-
-		image_uuid := uuid.New().String()
-		content_type := file.Header.Get("Content-Type")
-		extension := strings.Split(content_type, "/")
-		fmt.Println(extension)
-
-		original_url := "/gms/media/originals/" + image_uuid
-		original_path := path.Join(os.Getenv("APP_DATA"), "media", "originals", image_uuid+"."+extension[1])
-
-		thumbnail_url := "/gms/media/thumbnails/" + image_uuid
-		thumbnail_path := path.Join(os.Getenv("APP_DATA"), "media", "thumbnails", image_uuid)
-
-		preview_url := "/gms/media/previews/" + image_uuid
-		preview_path := path.Join(os.Getenv("APP_DATA"), "media", "previews", image_uuid)
-
-		fmt.Println("Saving file to:", original_path)
-
-		err := c.SaveUploadedFile(file, original_path, fs.FileMode.Perm(0o755))
-
-		if err != nil {
-			return fmt.Errorf("failed to save uploaded file: %s", err)
-		}
-
-		metadata := []byte(`{}`)
-
-		entries = append(entries, []any{
-			image_uuid,
-			userUUID.(string),
-			file.Header.Get("Content-Type"),
-			original_path,
-			original_url,
-			thumbnail_path,
-			thumbnail_url,
-			preview_path,
-			preview_url,
-			content_type,
-			"pending indexing",
-			time.Now(),
-			time.Now(),
-			metadata,
-		})
-
-		collectionentries = append(collectionentries, []any{
-			userUUID.(string),
-			image_uuid,
-			time.Now(),
-		})
-
-		var p msg_type = msg_type{
-			UUID:              image_uuid,
-			FILEURLPATH:       original_url,
-			SAVEPATH:          original_path,
-			THUMBNAILSAVEPATH: thumbnail_path,
-			THUMBNAILURLPATH:  thumbnail_url,
-			PREVIEWPATH:       preview_path,
-			PREVIEWURL:        preview_url,
-			OWNERUUID:         userUUID.(string),
-			COLLECTIONUUID:    userUUID.(string),
-
-			// STATUS: "pending thumbnail",
-			// CREATEDAT: time.Now(),
-			// UPLOADEDAT: time.Now(),
-			// METADATA: metadata,
-		}
-
-		message = append(message, p)
-
-	}
-
-	_, err = serverutils.Postgrespool.CopyFrom(
-		context.Background(),
-		pgx.Identifier{"galleryindex", "images"},
-		[]string{"uuid",
-			"owner_uuid",
-			"format",
-			"original_filepath",
-			"original_url",
-			"thumbnail_filepath",
-			"thumbnail_url",
-			"preview_filepath",
-			"preview_url",
-			"type",
-			"status",
-			"created_at",
-			"uploaded_at",
-			"metadata"},
-		pgx.CopyFromRows(entries))
-
-	if err != nil {
-		return fmt.Errorf("Fail to insert images indices into database %s", err)
-	}
-
-	_, err = serverutils.Postgrespool.CopyFrom(
-		context.Background(),
-		pgx.Identifier{"collections", "collection_images"},
-		[]string{"collection_uuid", "image_uuid", "added_at"},
-		pgx.CopyFromRows(collectionentries))
-
-	if err != nil {
-		return fmt.Errorf("Fail to insert user collection database %s", err)
-	}
-
-	for _, m := range message {
-
-		jsonpub, jsonerr := json.Marshal(m)
-
-		if jsonerr != nil {
-			log.Fatalf("failed to parse json %s", jsonerr)
-		}
-
-		fmt.Printf("parsed %v", jsonpub)
-
-		//thumbnail generation
-		chpuberr := ch.PublishWithContext(ctx,
+		err := serverutils.Rabbitmqchannel.PublishWithContext(ctx,
 			"",               // exchange
 			q_thumbnail.Name, // routing key
 			false,            // mandatory
 			false,            // immediate
 			amqp.Publishing{
 				ContentType: "application/json",
-				Body:        jsonpub,
-			})
+				Body:        body,
+			},
+		)
 
-		if chpuberr != nil {
-			return fmt.Errorf("fail to connect to publish to rabbitmq %s", chpuberr)
-		} else {
-			log.Printf("[X] Sent %s RBMQ", jsonpub)
+		if err != nil {
+			return fmt.Errorf("failed to publish message gen thumbnail: %s", err)
 		}
 
-		//vector generation
-		chpuberr_vec := ch.PublishWithContext(ctx,
-			"",            // exchange
-			q_vector.Name, // routing key
-			false,         // mandatory
-			false,         // immediate
-			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        jsonpub,
-			})
-
-		if chpuberr_vec != nil {
-			return fmt.Errorf("fail to connect to publish to rabbitmq vector %s", chpuberr_vec)
-		} else {
-			log.Printf("[X] Sent (to Vector) %s RBMQ ", jsonpub)
-		}
-
-		//metadata generation
-		chpuberr_meta := ch.PublishWithContext(ctx,
+		err = serverutils.Rabbitmqchannel.PublishWithContext(ctx,
 			"",              // exchange
 			q_metadata.Name, // routing key
 			false,           // mandatory
 			false,           // immediate
 			amqp.Publishing{
 				ContentType: "application/json",
-				Body:        jsonpub,
-			})
+				Body:        body,
+			},
+		)
 
-		if chpuberr_meta != nil {
-			return fmt.Errorf("fail to connect to publish to rabbitmq metadata %s", chpuberr_vec)
-		} else {
-			log.Printf("[X] Sent (to Metadata) %s RBMQ ", jsonpub)
+		if err != nil {
+			return fmt.Errorf("failed to publish message gen metadata: %s", err)
+		}
+
+		err = serverutils.Rabbitmqchannel.PublishWithContext(ctx,
+			"",            // exchange
+			q_vector.Name, // routing key
+			false,         // mandatory
+			false,         // immediate
+			amqp.Publishing{
+				ContentType: "application/json",
+				Body:        body,
+			},
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to publish vectormessage: %s", err)
 		}
 	}
 
-	c.Status(201)
-
+	c.Status(200)
 	return nil
 }

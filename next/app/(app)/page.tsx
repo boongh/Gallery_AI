@@ -8,9 +8,19 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import AddToCollectionModal from '@/components/AddToCollectionModal';
+import PresignedImage from '@/components/PresignedImage';
 import { useUser, useNavContext, useProfileContext } from './layout';
 
 type DayGroup = { year: number; month: number; day: number; images: ImageData[] };
+
+function formatEta(sec: number | null): string {
+  if (sec === null || sec < 1) return '';
+  const s = Math.round(sec);
+  if (s < 60) return `(~${s}s left)`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r > 0 ? `(~${m}m ${r}s left)` : `(~${m}m left)`;
+}
 
 function groupImagesByDate(images: ImageData[]): DayGroup[] {
   const map = new Map<string, ImageData[]>();
@@ -45,10 +55,10 @@ export default function Home() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [nextUrl, setNextUrl] = useState<string | null>(
-    '/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at'
+    '/gms/media?offset=0&limit=100&want=uuid-format-created_at-uploaded_at'
   );
   const [loading, setLoading] = useState(true);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; etaSec: number | null } | null>(null);
   const uploading = uploadProgress !== null;
   const [uploadOpen, { toggle: toggleUpload, close: closeUpload }] = useDisclosure(false);
   const [uploadFiles, setUploadFiles] = useState<File[] | undefined>(undefined);
@@ -62,10 +72,6 @@ export default function Home() {
     raw.map(img => ({
       id: img.uuid,
       format: img.format,
-      original_url: img.original_url,
-      thumbnail_url: img.thumbnail_url,
-      preview_url: img.preview_url ?? '',
-      status: img.status,
       uploadedAt: new Date(img.uploaded_at),
       createdAt: new Date(img.created_at),
       metaData: img.metadata || {},
@@ -74,10 +80,6 @@ export default function Home() {
   const parseSearchResults = (raw: any[]): ImageData[] =>
     raw.map(r => ({
       id: r.id,
-      original_url: r.original_url ?? '',
-      thumbnail_url: r.thumbnail_url ?? '',
-      preview_url: r.preview_url ?? '',
-      status: r.status ?? '',
       format: '',
       uploadedAt: r.created_at ? new Date(r.created_at) : new Date(0),
       createdAt: r.created_at ? new Date(r.created_at) : new Date(0),
@@ -104,7 +106,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadImages('/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at');
+    loadImages('/gms/media?offset=0&limit=100&want=uuid-format-created_at-uploaded_at');
   }, [loadImages]);
 
   async function handleSearch() {
@@ -170,24 +172,39 @@ export default function Home() {
   async function handleUpload() {
     if (!uploadFiles?.length) return;
     const total = uploadFiles.length;
-    setUploadProgress({ current: 0, total });
-    const uploadStart = performance.now();
-    console.log(`[Upload] Starting upload of ${total} file(s)`);
+    setUploadProgress({ current: 0, total, etaSec: null });
+    const startTime = Date.now();
     try {
-      for (let i = 0; i < total; i++) {
-        setUploadProgress({ current: i + 1, total });
-        const fileStart = performance.now();
-        const formData = new FormData();
-        formData.append('files', uploadFiles[i]);
-        const uploadUrl = userUUID ? `/gms/media/${userUUID}` : '/gms/media/me';
-        await fetch(uploadUrl, { method: 'POST', body: formData });
-        console.log(`[Upload] File ${i + 1}/${total} (${uploadFiles[i].name}) — ${(performance.now() - fileStart).toFixed(0)}ms`);
-      }
-      console.log(`[Upload] All done — total ${(performance.now() - uploadStart).toFixed(0)}ms`);
+      // Step 1: get presigned PUT URLs
+      const init = await fetch(`/gms/upload/init?count=${total}`).then(r => {
+        if (!r.ok) throw new Error(`init failed: ${r.status}`);
+        return r.json();
+      });
+      const { upload_id, presigned_urls } = init as { upload_id: string; presigned_urls: string[] };
+
+      // Step 2: PUT files to S3 with bounded concurrency
+      const CONCURRENCY = 4;
+      let next = 0;
+      let completed = 0;
+      const worker = async () => {
+        while (next < total) {
+          const i = next++;
+          await fetch(presigned_urls[i], { method: 'PUT', body: uploadFiles[i] });
+          completed++;
+          const elapsed = (Date.now() - startTime) / 1000;
+          const etaSec = elapsed * (total - completed) / completed;
+          setUploadProgress({ current: completed, total, etaSec: completed < total ? etaSec : null });
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, worker));
+
+      // Step 3: verify
+      await fetch(`/gms/upload/verify/${upload_id}`, { method: 'PUT' });
+
       closeUpload();
       setUploadFiles(undefined);
       setLoading(true);
-      await loadImages('/gms/media?offset=0&limit=100&want=uuid-original_url-thumbnail_url-preview_url-created_at-uploaded_at');
+      await loadImages('/gms/media?offset=0&limit=100&want=uuid-format-created_at-uploaded_at');
     } catch (err) {
       console.error('Upload error:', err);
     } finally {
@@ -214,7 +231,6 @@ export default function Home() {
 
   const isSearchActive = searchResults !== null;
   const displayedImages = isSearchActive ? searchResults : images;
-  const thumbSrc = (img: ImageData) => img.thumbnail_url || img.original_url;
 
   const allSelected = displayedImages.length > 0 && displayedImages.every(img => selectedIds.has(img.id));
 
@@ -231,7 +247,11 @@ export default function Home() {
       const img = imageIndexRef.current.get(id);
       if (!img) continue;
       try {
-        const res = await fetch(img.original_url, { credentials: 'include' });
+        const presignedUrl = await fetch(`/gms/media/originals/${id}`).then(r => {
+          if (!r.ok) throw new Error(`${r.status}`);
+          return r.text();
+        });
+        const res = await fetch(presignedUrl);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = Object.assign(document.createElement('a'), {
@@ -463,11 +483,10 @@ export default function Home() {
             />
             <Button
               onClick={handleUpload}
-              loading={uploading}
-              disabled={!uploadFiles?.length}
+              disabled={uploading || !uploadFiles?.length}
             >
               {uploadProgress
-                ? `Uploading ${uploadProgress.current} / ${uploadProgress.total}…`
+                ? `Uploading ${uploadProgress.current} / ${uploadProgress.total}… ${formatEta(uploadProgress.etaSec)}`.trimEnd()
                 : 'Upload'}
             </Button>
           </Group>
@@ -514,9 +533,7 @@ export default function Home() {
                   onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                   onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                 >
-                  <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    onError={(e) => { const el = e.currentTarget; if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; } else if (el.src.includes('/previews/')) { el.src = image.original_url; } }}
-                  />
+                  <PresignedImage uuid={image.id} mediaType="thumbnails" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   {isSelected && (
                     <Box style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
                       <Box style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--mantine-color-blue-5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -575,9 +592,7 @@ export default function Home() {
                         onMouseEnter={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                         onMouseLeave={e => { if (selectMode) return; (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                       >
-                        <img src={thumbSrc(image)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                          onError={(e) => { const el = e.currentTarget; if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; } else if (el.src.includes('/previews/')) { el.src = image.original_url; } }}
-                        />
+                        <PresignedImage uuid={image.id} mediaType="thumbnails" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         {isSelected && (
                           <Box style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 }}>
                             <Box style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--mantine-color-blue-5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

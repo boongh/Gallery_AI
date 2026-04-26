@@ -1,9 +1,14 @@
 from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
+from psycopg import sql;
 from utils.u_rabbitmq import connect_to_rabbitmq;
 from utils.u_waitfor import wait_for;
 from utils.u_embedder_model import embed_image;
+from utils.u_get_image_from_s3 import get_image_from_s3;
+from utils.u_postgres import connect_to_postgres;
+import sys
 import torch
+import traceback
 import json;
 import os;
 
@@ -18,16 +23,19 @@ def embed_image_callback(ch, method, properties, body):
         jsonbody = json.loads(body);
         print("Got req for ", jsonbody)
 
-        urlpath = jsonbody['original_url'];
-        savepath = jsonbody['original_filepath'];
+        original_key = jsonbody['original_url'];
+        t_key = jsonbody['thumbnail_url'];
+        p_key = jsonbody['preview_url'];
+        
+        embed_key = p_key or t_key
 
         #Database variables set up
         uuid = jsonbody['uuid'];
 
-        # Generate thumbnail
-        vector =  embed_image(savepath)
+        # Use thumbnail for embedding (PIL can't decode RAW formats like CR3/NEF)
+        vector = embed_image(get_image_from_s3(os.getenv('S3BUCKET'), embed_key))
         if vector is None:
-            print("Failed to generate vector for ", savepath)
+            print("Failed to generate vector for ", original_key)
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
             return
 
@@ -44,20 +52,49 @@ def embed_image_callback(ch, method, properties, body):
                         vector=vector,
                         payload={
                             "owner_uuid": jsonbody['owner_uuid'],
-                            "collection_id": [jsonbody['collection_uuid']],
-                            "thumbnail_url": jsonbody['thumbnail_url'],
-                            "preview_url": jsonbody['preview_url'],
-                            "original_url": urlpath,
+                            "thumbnail_key": jsonbody['thumbnail_url'],
+                            "preview_key": jsonbody['preview_url'],
+                            "original_key": jsonbody['original_url'],   
                             }
                     )
                 ]
             )
-            print("Generated vector for ", savepath)
+
+            update_postgress_embedder_id(uuid, os.getenv("MODEL_ID"))
+            print("Generated vector for ", original_key)
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     except Exception as e:
         print("exception occured in vector callback:", e)
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+def update_postgress_embedder_id(uuid, embedder) -> bool:
+    try:
+        schema = "galleryindex"
+        table = "images"
+        conn = wait_for(connect_to_postgres, "PostgreSQL")
+        
+        # Update database entry
+        cur = conn.cursor()
+        
+        query = sql.SQL("""
+            UPDATE {schema}.{table}
+            SET embedder_id= %s
+            WHERE uuid = %s;
+        """).format(
+            schema=sql.Identifier(schema),
+            table=sql.Identifier(table)
+        )
+
+        cur.execute(query, (embedder, uuid))
+
+        conn.commit()
+        conn.close()
+        return True
+    except:
+        print("Exception occured while updating database metadata for uuid ", uuid, ": ", sys.exc_info()[0], flush=True)
+        print(traceback.format_exc(), flush=True)
+        return False
 
 def main():
 

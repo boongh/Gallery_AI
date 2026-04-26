@@ -7,13 +7,14 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
+import PresignedImage from '@/components/PresignedImage';
 import { useNavContext, useProfileContext } from '@/app/(app)/layout';
 
 interface Collection {
   uuid: string;
   name: string;
   description: string;
-  thumbnail_url: string | null;
+  thumbnail_uuid: string | null;
   created_at: string;
 }
 
@@ -174,10 +175,10 @@ export default function CollectionPage() {
                 onClick={() => router.push(`/collection/${col.uuid}/contents`)}
               >
                 <Box style={{ aspectRatio: '1', overflow: 'hidden', position: 'relative' }}>
-                  {col.thumbnail_url ? (
-                    <img
-                      src={col.thumbnail_url}
-                      alt=""
+                  {col.thumbnail_uuid ? (
+                    <PresignedImage
+                      uuid={col.thumbnail_uuid}
+                      mediaType="thumbnails"
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
                   ) : (

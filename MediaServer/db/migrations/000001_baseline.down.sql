@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS users.credentials;
+DROP TABLE IF EXISTS galleryindex.images;
+DROP TABLE IF EXISTS cache.textsqueries;
+DROP TABLE IF EXISTS cache.imagesqueries;
+DROP TABLE IF EXISTS collections.collection_data;
+DROP TABLE IF EXISTS collections.collection_images;
+DROP TABLE IF EXISTS collections.collection_userperms;
+DROP TABLE IF EXISTS system.metrics;
+DROP TABLE IF EXISTS s3.uploadstats
+DROP SCHEMA IF EXISTS galleryindex;
+DROP SCHEMA IF EXISTS cache;
+DROP SCHEMA IF EXISTS collections;
+DROP SCHEMA IF EXISTS users;
+DROP SCHEMA IF EXISTS system;
+DROP SCHEMA IF EXISTS s3;

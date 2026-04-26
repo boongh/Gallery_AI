@@ -7,6 +7,7 @@ import { useIntersection, useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
 import { Pencil, Share2 } from 'lucide-react';
 import Lightbox, { type ImageData } from '@/components/Lightbox';
+import PresignedImage from '@/components/PresignedImage';
 import { useNavContext } from '@/app/(app)/layout';
 
 type DayGroup = { year: number; month: number; day: number; images: ImageData[] };
@@ -15,7 +16,7 @@ interface CollectionInfo {
   uuid: string;
   name: string;
   description: string;
-  thumbnail_url: string | null;
+  thumbnail_uuid: string | null;
   created_at: string;
 }
 
@@ -61,21 +62,12 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
   const { ref: sentinelRef, entry } = useIntersection({ threshold: 0, rootMargin: '-48px 0px 0px 0px' });
   const bannerNameVisible = entry?.isIntersecting ?? true;
 
-  function toAbsolute(url: string | undefined): string {
-    if (!url) return '';
-    return url.startsWith('/') || url.startsWith('http') ? url : `/${url}`;
-  }
-
   function parseContents(raw: any[]): ImageData[] {
     return raw.map(img => ({
       id: img.uuid,
-      original_url: toAbsolute(img.original_url),
-      thumbnail_url: toAbsolute(img.thumbnail_url),
-      preview_url: toAbsolute(img.preview_url),
-      format: '',
-      status: '',
+      format: img.format ?? '',
       createdAt: img.created_at ? new Date(img.created_at) : new Date(0),
-      uploadedAt: new Date(0),
+      uploadedAt: img.uploaded_at ? new Date(img.uploaded_at) : new Date(0),
       metaData: {},
     }));
   }
@@ -108,14 +100,14 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
             uuid: d.uuid ?? id,
             name: d.name ?? '',
             description: d.description ?? '',
-            thumbnail_url: d.thumbnail_url ? toAbsolute(d.thumbnail_url) : null,
+            thumbnail_uuid: d.thumbnail_uuid ?? null,
             created_at: d.created_at ?? '',
           });
         }
       })
       .catch(err => console.error('Error fetching collection info:', err));
 
-    loadContents(`/gms/collection/${id}/contents?want=uuid-original_url-thumbnail_url-preview_url-created_at&offset=0&limit=100`);
+    loadContents(`/gms/collection/${id}/contents?want=uuid-format-created_at-uploaded_at&offset=0&limit=100`);
   }, [id]);
 
   const groups = groupImagesByDate(images);
@@ -180,10 +172,10 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
         }}
       >
         {/* Thumbnail */}
-        {collection?.thumbnail_url ? (
-          <img
-            src={collection.thumbnail_url}
-            alt=""
+        {collection?.thumbnail_uuid ? (
+          <PresignedImage
+            uuid={collection.thumbnail_uuid}
+            mediaType="thumbnails"
             style={{
               width: 100, height: 100,
               borderRadius: 8,
@@ -297,12 +289,7 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow = 'var(--gb-shadow)'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                     >
-                      <img
-                        src={image.thumbnail_url || image.preview_url || image.original_url}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                        onError={(e) => { const el = e.currentTarget; if (el.src.includes('/thumbnails/')) { el.src = image.preview_url || image.original_url; } else if (el.src.includes('/previews/')) { el.src = image.original_url; } }}
-                      />
+                      <PresignedImage uuid={image.id} mediaType="thumbnails" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     </Box>
                   ))}
                 </Box>
@@ -354,10 +341,10 @@ export default function CollectionContentsPage({ params }: { params: Promise<{ i
 
           {/* Thumbnail row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {collection?.thumbnail_url ? (
-              <img
-                src={collection.thumbnail_url}
-                alt=""
+            {collection?.thumbnail_uuid ? (
+              <PresignedImage
+                uuid={collection.thumbnail_uuid}
+                mediaType="thumbnails"
                 style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', display: 'block', flexShrink: 0 }}
               />
             ) : (
