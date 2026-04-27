@@ -17,16 +17,22 @@ def ping():
 
 @app.post("/embed/text")
 def embed_text_endpoint(body: dict):
+    import traceback
     start = time.time()
     queries = body["texts_query"]
-    print("Embedding text queries: ", queries)
+    print("Embedding text queries: ", queries, flush=True)
     vectors = []
     for query in queries:
-        vector = utils.u_embedder_model.embed_text(query)
-        vectors.append(vector)
+        try:
+            vector = utils.u_embedder_model.embed_text(query)
+            vectors.append(vector)
+        except Exception as e:
+            print("embed_text failed:", e, flush=True)
+            print(traceback.format_exc(), flush=True)
+            raise
     end = time.time()
     elapsed = end - start
-    
+
     return {
         "content": {
             "elapsed_time": elapsed,

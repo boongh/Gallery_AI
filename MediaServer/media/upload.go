@@ -76,10 +76,10 @@ func MediaUploadInit(c *gin.Context, s3Client *s3.Client, postgresPool *pgxpool.
 		itemUUID := uuid.New()
 		uuids = append(uuids, itemUUID)
 
-		itemSharedSuffix := uploadid.String() + userUUID.(string) + "/" + itemUUID.String()
-		og_key := "/originals/" + itemSharedSuffix
-		t_key := "/thumbnails/" + itemSharedSuffix
-		p_key := "/previews/" + itemSharedSuffix
+		itemSharedSuffix := uploadid.String() + "/" + userUUID.(string) + "/" + itemUUID.String()
+		og_key := "originals/" + itemSharedSuffix
+		t_key := "thumbnails/" + itemSharedSuffix
+		p_key := "previews/" + itemSharedSuffix
 
 		input := &s3.PutObjectInput{
 			Bucket: &bucketName,

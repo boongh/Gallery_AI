@@ -49,8 +49,8 @@ func main() {
 
 	db.RunMigrations(pgconnection)
 
-	go bg_workers.DBSyncToStorageJob(context.Background(), time.NewTicker(1*time.Minute), serverutils.Postgrespool, serverutils.Postgrespool, serverutils.S3client)
-	go bg_workers.VectorSyncToDBJob(context.Background(), time.NewTicker(1*time.Minute), serverutils.Postgrespool)
+	go bg_workers.DBSyncToStorageJob(context.Background(), time.NewTicker(5*time.Minute), serverutils.Postgrespool, serverutils.Postgrespool, serverutils.S3client)
+	go bg_workers.VectorSyncToDBJob(context.Background(), time.NewTicker(1*time.Hour), serverutils.Postgrespool)
 	bg_workers.StartThumbnailWorker("thumbnail_preview_generation_queue")
 
 	defer pgconnection.Close()

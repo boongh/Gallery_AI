@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -66,98 +65,78 @@ func StartThumbnailWorker(queue string) error {
 				getOut.Body.Close()
 				if err != nil {
 					log.Printf("Failed to read original %s: %s", req.FILEURLKEY, err)
-
 					return
 				}
 
-				tempData, err := os.CreateTemp("", "temp-tpgen-*")
-				if err != nil {
-					log.Printf("Failed to create temp file for %s: %s", req.FILEURLKEY, err)
-
-					return
-				}
-				defer os.Remove(tempData.Name())
-
-				if _, err := tempData.Write(originalData); err != nil {
-					log.Printf("Failed to write to create temp file for %s: %s", req.FILEURLKEY, err)
-
-					return
-				}
-				defer tempData.Close()
-
-				img, errimg := vips.NewImageFromBuffer(originalData, vips.DefaultLoadOptions())
-				if errimg != nil {
-					log.Printf("Loading RAW %s", errimg)
-					img, errimg = vips.NewDcrawloadBuffer(originalData, vips.DefaultDcrawloadBufferOptions())
+				TBuff, errT := GenerateThumbnailBuffer(originalData)
+				PBuff, errP := GeneratePreviewBuffer(originalData)
+				if errT != nil && errP != nil {
+					log.Printf("Loading RAW because - \nerrT: %#+v\nerrP: %#+v", errT, errP)
+					img, errimg := vips.NewDcrawloadBuffer(originalData, vips.DefaultDcrawloadBufferOptions())
 					if errimg != nil {
 						log.Printf("Could not load image at all %s", errimg)
 
 						return
 					}
-				}
-				_ = img.Autorot(&vips.AutorotOptions{Flip: false})
+					_ = img.Autorot(&vips.AutorotOptions{Flip: false})
+					defer img.Close()
 
-				defer img.Close()
+					copy, _ := img.Copy(vips.DefaultCopyOptions())
+					defer copy.Close()
 
-				copy, _ := img.Copy(vips.DefaultCopyOptions())
-				defer copy.Close()
+					TBuff, errT = GenerateThumbnailImage(img)
+					PBuff, errP = GeneratePreviewImage(copy)
 
-				if err != nil {
-					log.Printf("Could not read to memory %s", err)
-				}
-				{
+					if errT != nil || errP != nil {
 
-					buff, err := GenerateThumbnailImage(img)
+						if errT != nil {
+							log.Printf("Failed to generate thumbnail for %s: %s", req.FILEURLKEY, err)
+						}
 
-					if err != nil {
-						log.Printf("Failed to generate thumbnail for %s: %s", req.FILEURLKEY, err)
+						if errP != nil {
+							log.Printf("Failed to preview thumbnail for %s: %s", req.FILEURLKEY, err)
+						}
 						return
 					}
+				}
 
-					_, err = serverutils.S3client.PutObject(ctx, &s3.PutObjectInput{
-						Bucket:      aws.String(serverutils.S3Bucket),
-						Key:         aws.String(req.THUMBNAILKEY),
-						Body:        bytes.NewReader(buff),
-						ContentType: aws.String("image/webp"),
-					})
+				_, errTU := serverutils.S3client.PutObject(ctx, &s3.PutObjectInput{
+					Bucket:      aws.String(serverutils.S3Bucket),
+					Key:         aws.String(req.THUMBNAILKEY),
+					Body:        bytes.NewReader(TBuff),
+					ContentType: aws.String("image/avif"),
+				})
 
-					if err != nil {
+				_, errPU := serverutils.S3client.PutObject(ctx, &s3.PutObjectInput{
+					Bucket:      aws.String(serverutils.S3Bucket),
+					Key:         aws.String(req.PREVIEWKEY),
+					Body:        bytes.NewReader(PBuff),
+					ContentType: aws.String("image/avif"),
+				})
+
+				if errTU != nil || errPU != nil {
+
+					if errTU != nil {
 						log.Printf("Failed to upload thumbnail for %s: %s", req.FILEURLKEY, err)
-						return
 					}
-				}
-				{
 
-					buff, err := GeneratePreviewImage(copy)
-					if err != nil {
-						log.Printf("Failed to generate thumbnail for %s: %s", req.FILEURLKEY, err)
-						return
+					if errPU != nil {
+						log.Printf("Failed to upload preview for %s: %s", req.FILEURLKEY, err)
 					}
-					_, err = serverutils.S3client.PutObject(ctx, &s3.PutObjectInput{
-						Bucket:      aws.String(serverutils.S3Bucket),
-						Key:         aws.String(req.PREVIEWKEY),
-						Body:        bytes.NewReader(buff),
-						ContentType: aws.String("image/webp"),
-					})
-
-					if err != nil {
-						log.Printf("Failed to upload thumbnail for %s: %s", req.FILEURLKEY, err)
-						return
-					}
-				}
-
-				// Mark active
-				_, err = serverutils.Postgrespool.Exec(ctx,
-					`UPDATE galleryindex.images SET status = 'active' WHERE uuid = $1 AND status = 'pending processing'`,
-					req.UUID)
-
-				if err != nil {
-					log.Printf("Failed to update status for %s: %s", req.UUID, err)
 
 					return
 				}
-				log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 
+				// Mark active
+				_, errPost := serverutils.Postgrespool.Exec(ctx,
+					`UPDATE galleryindex.images SET status = 'active' WHERE uuid = $1 AND status = 'pending processing'`,
+					req.UUID)
+
+				if errPost != nil {
+					log.Printf("Failed to update status for %s: %s", req.UUID, err)
+					return
+				}
+				log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 			}()
 
 		}
@@ -168,29 +147,46 @@ func StartThumbnailWorker(queue string) error {
 	return nil
 }
 
+func ThumbnailSaveBufferFormat(img *vips.Image) ([]byte, error) {
+	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
+		Q:        75, // AVIF Q ~50 ≈ WebP Q ~75
+		Effort:   7,  // 0–9; higher = smaller+slower
+		Lossless: false,
+		MinSize:  true,
+	})
+}
+
+func PreviewSaveBufferFormat(img *vips.Image) ([]byte, error) {
+
+	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
+		Q:        50, // AVIF Q ~50 ≈ WebP Q ~75
+		Effort:   4,  // 0–9; higher = smaller+slower
+		Lossless: false,
+		MinSize:  true,
+	})
+}
+
 func GenerateThumbnailBuffer(imageSource []byte) ([]byte, error) {
 	img, err := vips.NewThumbnailBuffer(imageSource, 256, &vips.ThumbnailBufferOptions{
-		NoRotate: false,
-		Height:   256,
-		Crop:     vips.InterestingAttention,
+		NoRotate:     false,
+		Height:       256,
+		Crop:         vips.InterestingAttention,
+		OptionString: "[n=-1]",
 	})
 	defer img.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return ThumbnailSaveBufferFormat(img)
 }
 
 func GeneratePreviewBuffer(imageSource []byte) ([]byte, error) {
 	img, err := vips.NewThumbnailBuffer(imageSource, 1024, &vips.ThumbnailBufferOptions{
-		NoRotate: false,
-		Height:   1024,
-		Crop:     vips.InterestingNone,
+		NoRotate:     false,
+		Height:       1024,
+		Crop:         vips.InterestingNone,
+		OptionString: "[n=-1]",
 	})
 
 	defer img.Close()
@@ -198,11 +194,7 @@ func GeneratePreviewBuffer(imageSource []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return PreviewSaveBufferFormat(img)
 }
 
 func GenerateThumbnailFile(filename string) ([]byte, error) {
@@ -216,11 +208,7 @@ func GenerateThumbnailFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return ThumbnailSaveBufferFormat(img)
 }
 
 func GeneratePreviewFile(filename string) ([]byte, error) {
@@ -235,36 +223,30 @@ func GeneratePreviewFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return PreviewSaveBufferFormat(img)
 }
 
-func GenerateThumbnailSource(filename string) ([]byte, error) {
-	img, err := vips.NewThumbnail(filename, 256, &vips.ThumbnailOptions{
-		NoRotate: false,
-		Height:   256,
-		Crop:     vips.InterestingAttention,
+func GenerateThumbnailSource(source *vips.Source) ([]byte, error) {
+	img, err := vips.NewThumbnailSource(source, 256, &vips.ThumbnailSourceOptions{
+		NoRotate:     false,
+		Height:       256,
+		Crop:         vips.InterestingAttention,
+		OptionString: "[n=-1]",
 	})
 	defer img.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return ThumbnailSaveBufferFormat(img)
 }
 
-func GeneratePreviewSource(filename string) ([]byte, error) {
-	img, err := vips.NewThumbnail(filename, 1024, &vips.ThumbnailOptions{
-		NoRotate: false,
-		Height:   1024,
-		Crop:     vips.InterestingNone,
+func GeneratePreviewSource(source *vips.Source) ([]byte, error) {
+	img, err := vips.NewThumbnailSource(source, 1024, &vips.ThumbnailSourceOptions{
+		NoRotate:     false,
+		Height:       1024,
+		Crop:         vips.InterestingNone,
+		OptionString: "[n=-1]",
 	})
 
 	defer img.Close()
@@ -272,11 +254,7 @@ func GeneratePreviewSource(filename string) ([]byte, error) {
 		return nil, err
 	}
 
-	return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return PreviewSaveBufferFormat(img)
 }
 
 func GenerateThumbnailImage(image *vips.Image) ([]byte, error) {
@@ -290,11 +268,7 @@ func GenerateThumbnailImage(image *vips.Image) ([]byte, error) {
 		return nil, err
 	}
 
-	return image.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        75,
-		Lossless: false,
-		Effort:   6,
-	})
+	return ThumbnailSaveBufferFormat(image)
 }
 
 func GeneratePreviewImage(image *vips.Image) ([]byte, error) {
@@ -308,9 +282,5 @@ func GeneratePreviewImage(image *vips.Image) ([]byte, error) {
 		return nil, err
 	}
 
-	return image.WebpsaveBuffer(&vips.WebpsaveBufferOptions{
-		Q:        85,
-		Lossless: false,
-		Effort:   6,
-	})
+	return PreviewSaveBufferFormat(image)
 }

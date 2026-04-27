@@ -443,6 +443,7 @@ func AdvancedMediaQuery(c *gin.Context) error {
 			return fmt.Errorf("json marshal fail: %v", err)
 		}
 
+		log.Printf("Query: %s", value)
 		res, err := http.Post(
 			"http://python-worker:8001/embed/text",
 			"application/json",
@@ -464,6 +465,7 @@ func AdvancedMediaQuery(c *gin.Context) error {
 		if err != nil {
 			return fmt.Errorf("Body parse fail: %v", err)
 		}
+		log.Printf("Reponse: %s", responseobj.Content.Vector)
 
 		// fmt.Println("Parsed embedding response vector: ")
 		for _, vector := range responseobj.Content.Vector {
